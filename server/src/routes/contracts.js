@@ -13,20 +13,34 @@ const router = Router()
 const MODELS = ['investment', 'ownership', 'installment']
 const STATUSES = ['pending', 'active', 'completed', 'cancelled', 'defaulted']
 
+// Данные животного тянем в сам договор, а не берём из оффера: после покупки
+// оффер уходит в sold_out и пропадает с витрины, а следить за животным
+// владельцу нужно именно тогда — весь срок откорма.
 const SELECT_CONTRACT = `
   SELECT c.*,
          p.title_en, p.title_ru, p.title_uz, p.photo_url,
+         p.description_en, p.description_ru, p.description_uz,
          p.meat_weight_g, p.price_tiyin AS product_price_tiyin,
          a.name             AS animal_name,
          a.breed            AS animal_breed,
          a.species          AS animal_species,
+         a.sex              AS animal_sex,
          a.current_weight_g AS animal_weight_g,
          a.status           AS animal_status,
+         a.photo_url        AS animal_photo_url,
+         a.rfid_tag         AS animal_rfid_tag,
+         a.birth_date,
+         a.expected_sale_date,
+         a.final_weight_g,
+         a.sold_at,
          a.final_sale_price_tiyin,
-         a.price_per_kg_tiyin
+         a.price_per_kg_tiyin,
+         f.name             AS farm_name,
+         f.location         AS farm_location
   FROM contracts c
   JOIN products p ON p.id = c.product_id
   LEFT JOIN animals a ON a.id = c.animal_id
+  LEFT JOIN farms   f ON f.id = a.farm_id
 `
 
 /**
@@ -263,6 +277,22 @@ router.get('/contracts/:id', requireAuth, asyncHandler(async (req, res) => {
     pool.query(`SELECT * FROM deliveries WHERE contract_id=$1 ORDER BY created_at DESC`, [req.params.id]),
   ])
 
+  // Наблюдение за животным: вес, лента ухода, видео. Ходить за этим
+  // в /animals/:id клиенту нельзя — там нет проверки, что животное его.
+  const [weights, activity, videos] = contract.animal_id
+    ? await Promise.all([
+        pool.query(
+          `SELECT * FROM weight_records WHERE animal_id=$1 ORDER BY recorded_at DESC LIMIT 20`,
+          [contract.animal_id]),
+        pool.query(
+          `SELECT * FROM activity WHERE animal_id=$1 ORDER BY created_at DESC LIMIT 20`,
+          [contract.animal_id]),
+        pool.query(
+          `SELECT * FROM videos WHERE animal_id=$1 ORDER BY recorded_at DESC LIMIT 10`,
+          [contract.animal_id]),
+      ])
+    : [{ rows: [] }, { rows: [] }, { rows: [] }]
+
   const rates = await feeRates()
   const summary = summarize(contract, rates, schedule.rows)
 
@@ -272,6 +302,9 @@ router.get('/contracts/:id', requireAuth, asyncHandler(async (req, res) => {
     schedule: schedule.rows,
     payouts: payouts.rows,
     deliveries: deliveries.rows,
+    weights: weights.rows,
+    activity: activity.rows,
+    videos: videos.rows,
   })
 }))
 
