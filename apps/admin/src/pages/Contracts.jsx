@@ -3,6 +3,7 @@ import Layout from '../Layout'
 import { api, formatSum, formatDay } from '../api'
 import { useStore } from '../store'
 import { useT } from '../i18n'
+import SearchSelect from '../components/SearchSelect'
 
 const MODELS = ['investment', 'ownership', 'installment']
 const STATUSES = ['pending', 'active', 'completed', 'cancelled', 'defaulted']
@@ -258,29 +259,36 @@ export default function Contracts() {
 
             <div className="form-group">
               <label className="form-label">{t('contracts.user')}</label>
-              <select className="form-select" value={form.user_id}
-                onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))}>
-                <option value="">{t('contracts.chooseClient')}</option>
-                {users.map(u => (
-                  <option key={u.id} value={u.id}>
-                    #{u.id} {u.name || ''} {u.phone} · {formatSum(u.balance_tiyin, language)}
-                  </option>
-                ))}
-              </select>
+              <SearchSelect
+                value={form.user_id}
+                onChange={v => setForm(f => ({ ...f, user_id: v }))}
+                placeholder={t('contracts.chooseClient')}
+                searchPlaceholder={t('users.searchPh')}
+                emptyText={t('users.notFound')}
+                options={users.map(u => ({
+                  value: u.id,
+                  label: `#${u.id} ${u.name || u.phone}`,
+                  hint: formatSum(u.balance_tiyin, language),
+                  search: u.phone,
+                }))}
+              />
             </div>
 
             <div className="form-group">
               <label className="form-label">{t('products.title')}</label>
-              <select className="form-select" value={form.product_id}
-                onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))}>
-                <option value="">{t('contracts.chooseOffer')}</option>
-                {offers.map(o => (
-                  <option key={o.id} value={o.id}>
-                    #{o.id} {t('models.' + o.model_type)}
-                    {o.animal_name ? ` · ${o.animal_name}` : ''} · {formatSum(o.price_tiyin, language)}
-                  </option>
-                ))}
-              </select>
+              <SearchSelect
+                value={form.product_id}
+                onChange={v => setForm(f => ({ ...f, product_id: v }))}
+                placeholder={t('contracts.chooseOffer')}
+                searchPlaceholder={t('common.search')}
+                emptyText={t('products.notFound')}
+                options={offers.map(o => ({
+                  value: o.id,
+                  label: `#${o.id} ${t('models.' + o.model_type)}${o.animal_name ? ' · ' + o.animal_name : ''}`,
+                  hint: formatSum(o.price_tiyin, language),
+                  search: [o.title_en, o.title_ru, o.title_uz, o.animal_name].filter(Boolean).join(' '),
+                }))}
+              />
               {offers.length === 0 && (
                 <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 6 }}>
                   {t('contracts.noOffers')}

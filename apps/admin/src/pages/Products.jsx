@@ -3,6 +3,7 @@ import Layout from '../Layout'
 import { api, formatSum } from '../api'
 import { useStore } from '../store'
 import { useT } from '../i18n'
+import SearchSelect from '../components/SearchSelect'
 
 const MODELS = ['investment', 'ownership', 'installment']
 // Модели, продающие конкретное животное: им нужны животное, цена и абонплата
@@ -288,15 +289,19 @@ export default function Products() {
               <>
                 <div className="form-group">
                   <label className="form-label">{t('products.animal')}</label>
-                  <select className="form-select" value={form.animal_id} onChange={set('animal_id')}>
-                    <option value="">{t('products.chooseAnimal')}</option>
-                    {freeAnimals.map(a => (
-                      <option key={a.id} value={a.id}>
-                        #{a.id} {a.name} · {t('animals.' + a.species)}
-                        {a.current_weight_g ? ` · ${(a.current_weight_g / 1000).toFixed(1)} kg` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    value={form.animal_id}
+                    onChange={v => setForm(f => ({ ...f, animal_id: v }))}
+                    placeholder={t('products.chooseAnimal')}
+                    searchPlaceholder={t('common.search')}
+                    emptyText={t('animals.notFound')}
+                    options={freeAnimals.map(a => ({
+                      value: a.id,
+                      label: `#${a.id} ${a.name} · ${t('animals.' + a.species)}`,
+                      hint: a.current_weight_g ? `${(a.current_weight_g / 1000).toFixed(1)} kg` : '',
+                      search: [a.breed, a.rfid_tag].filter(Boolean).join(' '),
+                    }))}
+                  />
                   {freeAnimals.length === 0 && (
                     <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 6 }}>
                       {t('products.noFreeAnimals')}

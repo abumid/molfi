@@ -3,6 +3,7 @@ import Layout from '../Layout'
 import { api, formatDate } from '../api'
 import { useStore } from '../store'
 import { useT } from '../i18n'
+import SearchSelect from '../components/SearchSelect'
 
 const EVENT_TYPES = ['feeding', 'weighing', 'vet', 'video']
 
@@ -210,16 +211,21 @@ export default function Activity() {
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select
-            className="form-select"
-            value={selectedAnimalId}
-            onChange={e => setSelectedAnimalId(e.target.value)}
-            style={{ width: 220, padding: '6px 12px' }}
-          >
-            {animals.map(s => (
-              <option key={s.id} value={s.id}>#{s.id} {s.name}</option>
-            ))}
-          </select>
+          <div style={{ width: 240 }}>
+            <SearchSelect
+              value={selectedAnimalId}
+              onChange={setSelectedAnimalId}
+              placeholder={t('products.chooseAnimal')}
+              searchPlaceholder={t('common.search')}
+              emptyText={t('animals.notFound')}
+              options={animals.map(a => ({
+                value: a.id,
+                label: `#${a.id} ${a.name}`,
+                hint: a.current_weight_g ? `${(a.current_weight_g / 1000).toFixed(1)} kg` : '',
+                search: [a.breed, a.rfid_tag, a.species].filter(Boolean).join(' '),
+              }))}
+            />
+          </div>
 
           {['all', ...EVENT_TYPES].map(tp => (
             <button

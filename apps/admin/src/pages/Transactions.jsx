@@ -3,6 +3,7 @@ import Layout from '../Layout'
 import { api, formatSum, formatDate } from '../api'
 import { useStore } from '../store'
 import { useT } from '../i18n'
+import SearchSelect from '../components/SearchSelect'
 
 // Типы, увеличивающие баланс. Список тот же, что в admin.js на бэкенде —
 // если он разъедется, форма покажет один знак, а сервер применит другой.
@@ -202,14 +203,19 @@ export default function Transactions() {
 
             <div className="form-group">
               <label className="form-label">{t('transactions.user')}</label>
-              <select className="form-select" value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))}>
-                <option value="">{t('transactions.chooseUser')}</option>
-                {users.map(u => (
-                  <option key={u.id} value={u.id}>
-                    #{u.id} {u.name || ''} {u.phone}
-                  </option>
-                ))}
-              </select>
+              <SearchSelect
+                value={form.user_id}
+                onChange={v => setForm(f => ({ ...f, user_id: v }))}
+                placeholder={t('transactions.chooseUser')}
+                searchPlaceholder={t('users.searchPh')}
+                emptyText={t('users.notFound')}
+                options={users.map(u => ({
+                  value: u.id,
+                  label: `#${u.id} ${u.name || u.phone}`,
+                  hint: formatSum(u.balance_tiyin, language),
+                  search: u.phone,
+                }))}
+              />
             </div>
 
             <div className="form-group">
