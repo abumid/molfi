@@ -3,7 +3,6 @@ import bcrypt from 'bcrypt'
 import { pool } from '../db/pool.js'
 import { ok, asyncHandler } from '../utils/response.js'
 import { requireAdmin } from '../middleware/auth.js'
-import { calcFinalPayout } from '../utils/calculations.js'
 
 const router = Router()
 
@@ -301,52 +300,9 @@ router.post('/sheep', requireAdmin, asyncHandler(async (req, res) => {
   ok(res, { sheep: result.rows[0] })
 }))
 
-router.post('/sheep/:id/sell', requireAdmin, asyncHandler(async (req, res) => {
-  const { final_weight_g, final_sale_price_tiyin } = req.body
-
-  const sheep = (await pool.query(`SELECT * FROM sheep WHERE id = $1`, [req.params.id])).rows[0]
-  const shares = (await pool.query(
-    `SELECT * FROM shares WHERE sheep_id = $1 AND status = 'active'`,
-    [req.params.id]
-  )).rows
-
-  const sheepForCalc = { ...sheep, final_weight_g, final_sale_price_tiyin }
-  const payouts = []
-
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-
-    await client.query(
-      `UPDATE sheep SET status = 'sold', final_weight_g = $1, final_sale_price_tiyin = $2, sold_at = NOW() WHERE id = $3`,
-      [final_weight_g, final_sale_price_tiyin, req.params.id]
-    )
-
-    for (const share of shares) {
-      const payout = calcFinalPayout(sheepForCalc, share.share_pct)
-      await client.query(
-        `UPDATE wallet_balances SET balance_tiyin = balance_tiyin + $1 WHERE user_id = $2`,
-        [payout, share.user_id]
-      )
-      await client.query(`UPDATE shares SET status = 'paid' WHERE id = $1`, [share.id])
-      await client.query(
-        `INSERT INTO transactions (user_id, type, amount_tiyin, description) VALUES ($1, $2, $3, $4)`,
-        [share.user_id, 'payout', payout, `Выплата за ${share.share_pct}% барана ${sheep.name}`]
-      )
-      payouts.push({ user_id: share.user_id, share_pct: share.share_pct, payout_tiyin: payout })
-    }
-
-    await client.query('COMMIT')
-  } catch (e) {
-    await client.query('ROLLBACK')
-    throw e
-  } finally {
-    client.release()
-  }
-
-  const total_paid_tiyin = payouts.reduce((sum, p) => sum + p.payout_tiyin, 0)
-  ok(res, { payouts, total_paid_tiyin })
-}))
+// POST /sheep/:id/sell удалён в v2: раздавал выплаты по долям через
+// calcFinalPayout, которого в новых расчётах нет. Продажа животного
+// переезжает в contracts (ownership) на этапе 3.
 
 router.post('/sheep/:id/unsell', requireAdmin, asyncHandler(async (req, res) => {
   const sheep = (await pool.query(
