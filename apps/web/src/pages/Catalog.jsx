@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from '../store'
 import MolfiLogo from '../components/Logo'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 const formatSum = (tiyin) => {
   if (!tiyin && tiyin !== 0) return '0 сум'
@@ -130,7 +131,7 @@ export default function Catalog() {
   const {
     sheep, myShares, balance, transactions,
     fetchSheep, fetchMyShares, fetchBalance, fetchTransactions,
-    language, setLanguage, user, isAuthenticated,
+    language, user, isAuthenticated,
   } = useStore()
 
   const initialTab = searchParams.get('tab') === 'available' ? 'catalog' : 'assets'
@@ -164,21 +165,7 @@ export default function Catalog() {
     <div style={{ padding: '20px 16px 90px', fontFamily: 'Inter, sans-serif', color: 'var(--color-text)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <MolfiLogo size={30} />
-        <button
-          onClick={() => setLanguage(language === 'ru' ? 'uz' : 'ru')}
-          style={{
-            padding: '8px 16px',
-            background: 'var(--color-surface-2)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 12,
-            color: 'var(--color-accent)',
-            fontWeight: 700, fontSize: 13,
-            cursor: 'pointer',
-            fontFamily: 'Inter, sans-serif'
-          }}
-        >
-          {language === 'ru' ? 'UZ' : 'RU'}
-        </button>
+        <LanguageSwitcher />
       </div>
 
       <div style={{

@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from '../../store'
+import { useT } from '../../i18n'
 
 function HomeIcon({ active }) {
   const color = active ? 'var(--color-green-light)' : 'var(--color-text-muted)'
@@ -45,16 +46,17 @@ function ProfileIcon({ active }) {
 }
 
 const NAV = [
-  { path: '/catalog', labelRu: 'Главная', labelUz: 'Bosh sahifa', Icon: HomeIcon },
-  { path: '/catalog?tab=available', labelRu: 'Каталог', labelUz: 'Katalog', Icon: CatalogIcon },
-  { path: '/wallet', labelRu: 'Кошелёк', labelUz: 'Hamyon', Icon: WalletIcon },
-  { path: '/profile', labelRu: 'Профиль', labelUz: 'Profil', Icon: ProfileIcon },
+  { path: '/catalog', key: 'home', Icon: HomeIcon },
+  { path: '/catalog?tab=available', key: 'catalog', Icon: CatalogIcon },
+  { path: '/wallet', key: 'wallet', Icon: WalletIcon },
+  { path: '/profile', key: 'profile', Icon: ProfileIcon },
 ]
 
 export default function BottomNav() {
   const navigate = useNavigate()
   const { pathname, search } = useLocation()
   const language = useStore(s => s.language)
+  const t = useT(language)
 
   const isActive = (item) => {
     if (item.path === '/catalog') {
@@ -76,7 +78,7 @@ export default function BottomNav() {
     }}>
       {NAV.map((item) => {
         const active = isActive(item)
-        const label = language === 'uz' ? item.labelUz : item.labelRu
+        const label = t.nav[item.key]
         const color = active ? 'var(--color-green-light)' : 'var(--color-text-muted)'
         return (
           <button key={item.path} onClick={() => navigate(item.path)} style={{

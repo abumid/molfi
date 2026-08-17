@@ -6,7 +6,7 @@ export const useStore = create((set, get) => ({
   admin: null,
   isAuthenticated: false,
   isLoading: true,
-  language: localStorage.getItem('molfi_admin_lang') || 'uz',
+  language: localStorage.getItem('molfi_admin_lang') || 'en',
 
   login: async (phone, password) => {
     const data = await api.post('/auth/login', { phone, password })

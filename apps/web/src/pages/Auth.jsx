@@ -4,6 +4,7 @@ import { retrieveLaunchParams, retrieveRawInitData, requestContact } from '@tele
 import { useStore } from '../store'
 import { useT } from '../i18n'
 import { api } from '../utils/api'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 // SDK v3: raw initData берётся через retrieveRawInitData(),
 // а launch params возвращают tgWebAppData (НЕ initDataRaw / initData)
@@ -419,17 +420,7 @@ export default function Auth() {
       flexDirection: 'column', justifyContent: 'center', padding: 24, gap: 24,
       boxSizing: 'border-box', position: 'relative',
     }}>
-      <button
-        onClick={() => setLanguage(language === 'ru' ? 'uz' : 'ru')}
-        style={{
-          position: 'absolute', top: 16, right: 16,
-          background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 20,
-          padding: '6px 14px', color: 'var(--color-text)', fontSize: 13, fontWeight: 600,
-          cursor: 'pointer', fontFamily: 'Inter, sans-serif',
-        }}
-      >
-        {language === 'ru' ? 'UZ' : 'RU'}
-      </button>
+      <LanguageSwitcher style={{ position: 'absolute', top: 16, right: 16 }} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', marginBottom: 8 }}>
         <Title>Molfi</Title>
@@ -445,7 +436,7 @@ export default function Auth() {
           {isInTelegram() && (
             <div style={{ textAlign: 'center' }}>
               <LinkButton onClick={handleUseTelegramPhone}>
-                {language === 'uz' ? 'Telegramdagi raqamni ishlatish' : 'Использовать номер из Telegram'}
+                {language === 'uz' ? 'Telegramdagi raqamni ishlatish' : t.auth.use_telegram_number}
               </LinkButton>
             </div>
           )}
@@ -477,24 +468,24 @@ export default function Auth() {
           <Subtitle>{t.auth.code_sent_to} {phone}</Subtitle>
           {sendVia === 'telegram' && (
             <p style={{ fontSize: 13, color: COLORS.accent, textAlign: 'center', margin: 0 }}>
-              {language === 'uz' ? 'Kod Telegram botiga yuborildi' : 'Код отправлен в Telegram-бот'}
+              {language === 'uz' ? 'Kod Telegram botiga yuborildi' : t.auth.code_sent_telegram}
             </p>
           )}
           {sendVia === 'dev' && (
             <p style={{ fontSize: 13, color: COLORS.textMuted, textAlign: 'center', margin: 0 }}>
-              {language === 'uz' ? 'Test rejimi: kodni serverdan tekshiring' : 'Тестовый режим: проверьте код на сервере'}
+              {language === 'uz' ? 'Test rejimi: kodni serverdan tekshiring' : t.auth.dev_mode_hint}
             </p>
           )}
           {sendVia === 'none' && (
             <p style={{ fontSize: 13, color: COLORS.red, textAlign: 'center', margin: 0 }}>
               {language === 'uz'
                 ? 'Kodni yuborib bolmadi. @molfi_bot ni oching, /start bosing va raqamingizni ulashing, keyin qayta urinib koring.'
-                : 'Не удалось отправить код. Откройте @molfi_bot, нажмите /start, поделитесь номером — и попробуйте снова.'}
+                : t.auth.telegram_send_failed}
             </p>
           )}
           {sendVia === 'sms' && (
             <p style={{ fontSize: 13, color: COLORS.textMuted, textAlign: 'center', margin: 0 }}>
-              {language === 'uz' ? 'Kod SMS orqali yuborildi' : 'Код отправлен по SMS'}
+              {language === 'uz' ? 'Kod SMS orqali yuborildi' : t.auth.code_sent_sms}
             </p>
           )}
           <CodeInput value={code} onChange={setCode} />

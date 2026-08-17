@@ -9,7 +9,6 @@ import SheepDetail from './pages/SheepDetail'
 import BuyShare from './pages/BuyShare'
 import Wallet from './pages/Wallet'
 import Profile from './pages/Profile'
-import Admin from './pages/Admin'
 
 const NAV_PATHS = ['/catalog', '/wallet', '/profile']
 
@@ -32,15 +31,6 @@ function PrivateRoute({ children }) {
   // отработать (например, при обновлении страницы).
   if (isLoading) return <LoadingScreen />
   return isAuthenticated ? children : <Navigate to="/auth" replace />
-}
-
-function AdminRoute({ children }) {
-  const { isAuthenticated, user, isLoading } = useStore()
-
-  if (isLoading) return <LoadingScreen />
-  if (!isAuthenticated) return <Navigate to="/auth" replace />
-  if (user?.role !== 'admin') return <Navigate to="/catalog" replace />
-  return children
 }
 
 function Layout() {
@@ -68,7 +58,6 @@ function Layout() {
         <Route path="/sheep/:id/buy" element={<PrivateRoute><BuyShare /></PrivateRoute>} />
         <Route path="/wallet" element={<PrivateRoute><Wallet /></PrivateRoute>} />
         <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
-        <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
       </Routes>
       {NAV_PATHS.includes(location.pathname) && <BottomNav />}
     </>

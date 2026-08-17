@@ -42,8 +42,8 @@ export default function Activity() {
   const { language } = useStore()
   const t = useT(language)
 
-  const [sheep, setSheep] = useState([])
-  const [selectedSheepId, setSelectedSheepId] = useState('')
+  const [animals, setAnimals] = useState([])
+  const [selectedAnimalId, setSelectedAnimalId] = useState('')
   const [events, setEvents] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -55,19 +55,19 @@ export default function Activity() {
   const [editForm, setEditForm] = useState({})
 
   useEffect(() => {
-    api.get('/admin/sheep')
+    api.get('/admin/animals')
       .then(d => {
-        const list = d.sheep || []
-        setSheep(list)
-        if (list.length > 0) setSelectedSheepId(String(list[0].id))
+        const list = d.animals || []
+        setAnimals(list)
+        if (list.length > 0) setSelectedAnimalId(String(list[0].id))
       })
       .catch(console.error)
   }, [])
 
-  const loadEvents = (sheepId) => {
-    if (!sheepId) return
+  const loadEvents = (animalId) => {
+    if (!animalId) return
     setLoading(true)
-    api.get(`/sheep/${sheepId}/activity?limit=50`)
+    api.get(`/animals/${animalId}/activity?limit=50`)
       .then(d => {
         setEvents(d.data?.items || [])
         setTotal(d.data?.total || 0)
@@ -77,11 +77,11 @@ export default function Activity() {
   }
 
   useEffect(() => {
-    if (selectedSheepId) loadEvents(selectedSheepId)
-  }, [selectedSheepId])
+    if (selectedAnimalId) loadEvents(selectedAnimalId)
+  }, [selectedAnimalId])
 
   const handleAdd = async () => {
-    if (!selectedSheepId) return
+    if (!selectedAnimalId) return
     setSaving(true)
     try {
       let meta = null
@@ -100,7 +100,7 @@ export default function Activity() {
           url: null,
         }
       }
-      await api.post(`/sheep/${selectedSheepId}/activity`, {
+      await api.post(`/animals/${selectedAnimalId}/activity`, {
         type: form.type,
         title_ru: form.title_ru.trim(),
         title_uz: form.title_uz.trim(),
@@ -110,7 +110,7 @@ export default function Activity() {
       })
       setShowAdd(false)
       setForm(EMPTY_FORM)
-      loadEvents(selectedSheepId)
+      loadEvents(selectedAnimalId)
     } catch (e) {
       alert((language === 'uz' ? 'Xatolik: ' : 'Ошибка: ') + e.message)
     }
@@ -187,7 +187,7 @@ export default function Activity() {
     ? events
     : events.filter(e => e.type === typeFilter)
 
-  const selectedSheep = sheep.find(s => String(s.id) === selectedSheepId)
+  const selectedAnimal = animals.find(s => String(s.id) === selectedAnimalId)
 
   return (
     <Layout title={language === 'uz' ? 'Faoliyat' : 'Активность'}>
@@ -195,7 +195,7 @@ export default function Activity() {
         <div className="card-title">
           {language === 'uz' ? 'Faoliyat lentasi' : 'Лента активности'}
           {' '}
-          {!loading && selectedSheepId && (
+          {!loading && selectedAnimalId && (
             <span style={{ color: '#8892a4', fontWeight: 400, fontSize: 14 }}>
               ({total})
             </span>
@@ -212,11 +212,11 @@ export default function Activity() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           <select
             className="form-select"
-            value={selectedSheepId}
-            onChange={e => setSelectedSheepId(e.target.value)}
+            value={selectedAnimalId}
+            onChange={e => setSelectedAnimalId(e.target.value)}
             style={{ width: 220, padding: '6px 12px' }}
           >
-            {sheep.map(s => (
+            {animals.map(s => (
               <option key={s.id} value={s.id}>#{s.id} {s.name}</option>
             ))}
           </select>
@@ -313,9 +313,9 @@ export default function Activity() {
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-title">
               + {language === 'uz' ? 'Yangi voqea' : 'Новое событие'}
-              {selectedSheep && (
+              {selectedAnimal && (
                 <span style={{ fontSize: 13, color: '#8892a4', fontWeight: 400 }}>
-                  {' '}— {selectedSheep.name}
+                  {' '}— {selectedAnimal.name}
                 </span>
               )}
               <button className="btn btn-secondary btn-sm" onClick={() => setShowAdd(false)}>✕</button>

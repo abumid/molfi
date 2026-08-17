@@ -1,6 +1,6 @@
 import { pool } from './pool.js'
 
-// Molfi v2 — миграция под три модели: ownership / installment / fixed_income.
+// Molfi v2 — миграция под модели investment / ownership / installment.
 // Идемпотентна: можно гонять поверх существующей базы v1.
 // Порядок: справочники → переименование sheep→animals → продажи → индексы → дефолтные настройки.
 
@@ -193,22 +193,64 @@ const migrate = async () => {
       price_tiyin      BIGINT NOT NULL DEFAULT 0,  -- ownership: цена животного; installment: полная цена
       min_amount_tiyin BIGINT,                     -- fixed_income: минимальный вход
       term_months      INTEGER,                    -- installment: срок рассрочки; fixed_income: срок вклада
-      annual_rate_bp   INTEGER,                    -- fixed_income: 1800 = 18% годовых
+      annual_rate_bp   INTEGER,                    -- ЛЕГАСИ: остаток модели fixed_income, не используется
       meat_weight_g    INTEGER,                    -- installment: обещанный выход мяса
 
       slots_total      INTEGER DEFAULT 1,
       slots_taken      INTEGER DEFAULT 0,
       status           VARCHAR(20) DEFAULT 'draft',
+      -- Абонплата за содержание. Может отличаться от значения по умолчанию
+      -- в settings: крупному животному нужно больше корма.
+      boarding_fee_monthly_tiyin BIGINT,
       starts_at        DATE,
       ends_at          DATE,
       created_at       TIMESTAMP DEFAULT NOW()
     );
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS boarding_fee_monthly_tiyin BIGINT;
+
+    -- ============================================================
+    -- 4.1 ПЕРЕИМЕНОВАНИЕ МОДЕЛЕЙ ПОД РЕАЛЬНЫЙ БИЗНЕС
+    --
+    -- Было (из кита): ownership / installment / fixed_income.
+    -- Стало:          investment / ownership / installment.
+    --
+    -- Старый ownership по смыслу был инвестицией: клиент покупал животное,
+    -- ферма растила, животное продавалось, клиент получал выручку.
+    -- Поэтому существующие строки переезжают в investment.
+    -- Освободившееся имя ownership занимает новая модель: клиент покупает
+    -- животное, платит абонплату помесячно и забирает его живым или мясом.
+    --
+    -- fixed_income удаляется целиком: животноводство не может обещать
+    -- фиксированную ставку, а обещание доходности — обязательство,
+    -- за которое отвечают деньгами.
+    -- ============================================================
+    DO $$
+    BEGIN
+      -- Констрейнты снимаем до переименования, иначе UPDATE в них упрётся
+      ALTER TABLE products  DROP CONSTRAINT IF EXISTS products_model_check;
+      ALTER TABLE products  DROP CONSTRAINT IF EXISTS products_model_fields_check;
+      ALTER TABLE contracts DROP CONSTRAINT IF EXISTS contracts_model_check;
+
+      UPDATE products  SET model_type = 'investment' WHERE model_type = 'ownership';
+      UPDATE contracts SET model_type = 'investment' WHERE model_type = 'ownership';
+
+      -- Договоры по удаляемой модели закрываем, а не бросаем: у них
+      -- есть начисления в payouts, которые иначе повиснут сиротами
+      UPDATE contracts SET status = 'cancelled', closed_at = NOW()
+        WHERE model_type = 'fixed_income' AND status IN ('pending','active');
+      DELETE FROM payouts WHERE kind = 'interest'
+        AND contract_id IN (SELECT id FROM contracts WHERE model_type = 'fixed_income');
+      DELETE FROM transactions
+        WHERE contract_id IN (SELECT id FROM contracts WHERE model_type = 'fixed_income');
+      DELETE FROM contracts WHERE model_type = 'fixed_income';
+      DELETE FROM products  WHERE model_type = 'fixed_income';
+    END $$;
 
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_model_check') THEN
         ALTER TABLE products ADD CONSTRAINT products_model_check
-          CHECK (model_type IN ('ownership','installment','fixed_income'));
+          CHECK (model_type IN ('investment','ownership','installment'));
       END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_status_check') THEN
         ALTER TABLE products ADD CONSTRAINT products_status_check
@@ -217,9 +259,10 @@ const migrate = async () => {
       -- обязательные поля зависят от модели
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_model_fields_check') THEN
         ALTER TABLE products ADD CONSTRAINT products_model_fields_check CHECK (
-          (model_type <> 'ownership'    OR animal_id IS NOT NULL)
-          AND (model_type <> 'installment'  OR (term_months IS NOT NULL AND meat_weight_g IS NOT NULL))
-          AND (model_type <> 'fixed_income' OR (term_months IS NOT NULL AND annual_rate_bp IS NOT NULL))
+          -- investment и ownership продают конкретное животное по цене
+          (model_type NOT IN ('investment','ownership') OR (animal_id IS NOT NULL AND price_tiyin > 0))
+          -- installment продаёт обещание мяса в срок
+          AND (model_type <> 'installment' OR (term_months IS NOT NULL AND meat_weight_g IS NOT NULL))
         );
       END IF;
     END $$;
@@ -250,11 +293,22 @@ const migrate = async () => {
       created_at      TIMESTAMP DEFAULT NOW()
     );
 
+    -- Абонплата фиксируется в момент подписания и дальше не меняется,
+    -- даже если тариф в settings подняли: клиент согласился на эту цену.
+    ALTER TABLE contracts ADD COLUMN IF NOT EXISTS boarding_fee_monthly_tiyin BIGINT;
+    -- Сколько начислено за содержание и сколько из этого закрыто.
+    -- investment гасит долг из выручки при продаже, ownership — помесячно.
+    ALTER TABLE contracts ADD COLUMN IF NOT EXISTS boarding_accrued_tiyin BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE contracts ADD COLUMN IF NOT EXISTS boarding_paid_tiyin    BIGINT NOT NULL DEFAULT 0;
+    -- До какого месяца абонплата уже начислена. Крон идёт от этой даты,
+    -- поэтому повторный запуск в тот же день ничего не задваивает.
+    ALTER TABLE contracts ADD COLUMN IF NOT EXISTS boarding_accrued_until DATE;
+
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contracts_model_check') THEN
         ALTER TABLE contracts ADD CONSTRAINT contracts_model_check
-          CHECK (model_type IN ('ownership','installment','fixed_income'));
+          CHECK (model_type IN ('investment','ownership','installment'));
       END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contracts_status_check') THEN
         ALTER TABLE contracts ADD CONSTRAINT contracts_status_check
@@ -265,10 +319,15 @@ const migrate = async () => {
           CHECK (exit_type IS NULL OR exit_type IN ('sale','slaughter'));
       END IF;
       -- одно животное не может быть продано двум владельцам одновременно
+      -- Условие индекса изменилось (добавился investment), поэтому старый сносим
+      IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'contracts_one_owner_per_animal'
+                 AND indexdef NOT LIKE '%investment%') THEN
+        DROP INDEX contracts_one_owner_per_animal;
+      END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'contracts_one_owner_per_animal') THEN
         CREATE UNIQUE INDEX contracts_one_owner_per_animal
           ON contracts (animal_id)
-          WHERE model_type = 'ownership' AND status IN ('pending','active');
+          WHERE model_type IN ('investment','ownership') AND status IN ('pending','active');
       END IF;
     END $$;
 
@@ -321,6 +380,15 @@ const migrate = async () => {
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payouts_status_check') THEN
         ALTER TABLE payouts ADD CONSTRAINT payouts_status_check
           CHECK (status IN ('pending','paid','cancelled'));
+      END IF;
+      -- Идемпотентность начисления процентов: крон может упасть и
+      -- перезапуститься в тот же день, и без этого индекса проценты
+      -- за период начислятся дважды. Индекс частичный — у выплат тела
+      -- и выручки period_start пустой, они под ограничение не попадают.
+      IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'payouts_one_interest_per_period') THEN
+        CREATE UNIQUE INDEX payouts_one_interest_per_period
+          ON payouts (contract_id, period_start)
+          WHERE kind = 'interest';
       END IF;
     END $$;
 
@@ -402,14 +470,29 @@ const migrate = async () => {
   // Дефолтные настройки платформы — вставляем отдельно, чтобы не ломать миграцию
   await pool.query(`
     INSERT INTO settings (key, value, comment) VALUES
-      ('platform_fee_bp',            '300',    'Комиссия платформы с прибыли, б.п. (300 = 3%)'),
-      ('boarding_fee_monthly_tiyin', '0',      'Плата за содержание животного в месяц, тийин'),
-      ('late_fee_bp',                '0',      'Пеня за просрочку платежа, б.п. в день'),
-      ('min_investment_tiyin',       '100000000', 'Минимальный вход в fixed_income, тийин (1 000 000 сум)'),
-      ('overdue_grace_days',         '5',      'Сколько дней после due_date до статуса overdue'),
-      ('default_after_missed',       '3',      'Сколько пропущенных платежей до статуса defaulted'),
-      ('models_enabled', 'ownership,fixed_income', 'Какие модели открыты. Через запятую из ownership,installment,fixed_income')
+      ('boarding_fee_monthly_tiyin', '4000000', 'Абонплата за содержание в месяц, тийин (4 000 000 = 40 000 сум)'),
+      ('purchase_fee_bp',            '0',       'Комиссия при покупке, б.п. Пока 0: барьер входа отпугивает клиентов'),
+      ('profit_fee_client_bp',       '0',       'Комиссия с прибыли клиента, б.п. Пока 0'),
+      ('profit_fee_farm_bp',         '0',       'Комиссия с прибыли фермы, б.п. Пока 0'),
+      ('late_fee_bp',                '0',       'Пеня за просрочку платежа, б.п. в день'),
+      ('overdue_grace_days',         '5',       'Сколько дней после due_date до статуса overdue'),
+      ('default_after_missed',       '3',       'Сколько пропущенных платежей до статуса defaulted'),
+      ('models_enabled', 'investment,ownership', 'Какие модели открыты. Из investment,ownership,installment')
     ON CONFLICT (key) DO NOTHING;
+  `)
+
+  // Настройки, оставшиеся от прежней модели, чтобы админка не показывала мусор
+  await pool.query(`
+    DELETE FROM settings WHERE key IN ('platform_fee_bp','min_investment_tiyin');
+    UPDATE settings SET value = 'investment,ownership'
+      WHERE key = 'models_enabled' AND value LIKE '%fixed_income%';
+
+    -- Прежняя миграция сеяла абонплату нулём, и ON CONFLICT DO NOTHING
+    -- её не перезаписывает. Ноль теперь не рабочее значение: без абонплаты
+    -- у платформы нет выручки вообще. Меняем только нули — осознанно
+    -- выставленный тариф не трогаем.
+    UPDATE settings SET value = '4000000', updated_at = NOW()
+      WHERE key = 'boarding_fee_monthly_tiyin' AND value IN ('0','');
   `)
 
   console.log('Migration v2 complete')

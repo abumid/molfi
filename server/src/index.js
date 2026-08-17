@@ -7,6 +7,7 @@ import productsRoutes from './routes/products.js'
 import contractsRoutes from './routes/contracts.js'
 import paymentsRoutes from './routes/payments.js'
 import settingsRoutes from './routes/settings.js'
+import { startJobs } from './jobs/index.js'
 import walletRoutes from './routes/wallet.js'
 import adminRoutes from './routes/admin.js'
 import profileRoutes from './routes/profile.js'
@@ -56,4 +57,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, error: 'Server error' })
 })
 
-app.listen(process.env.PORT || 3000, () => console.log(`Server running on port ${process.env.PORT || 3000}`))
+app.listen(process.env.PORT || 3000, () => {
+  console.log(`Server running on port ${process.env.PORT || 3000}`)
+  startJobs()
+})

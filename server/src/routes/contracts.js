@@ -2,12 +2,15 @@ import { Router } from 'express'
 import { pool } from '../db/pool.js'
 import { ok, fail, asyncHandler } from '../utils/response.js'
 import { requireAuth, requireAdmin } from '../middleware/auth.js'
-import { getSettingInt, enabledModels } from '../utils/settings.js'
-import { buildSchedule, installmentSummary, fixedIncomeMaturity, ownershipPayout } from '../utils/calculations.js'
+import { enabledModels, feeRates, boardingFeeMonthly } from '../utils/settings.js'
+import {
+  buildSchedule, installmentSummary, investmentPayout, ownershipSummary,
+  purchaseFee, purchaseTotal, addMonths,
+} from '../utils/calculations.js'
 
 const router = Router()
 
-const MODELS = ['ownership', 'installment', 'fixed_income']
+const MODELS = ['investment', 'ownership', 'installment']
 const STATUSES = ['pending', 'active', 'completed', 'cancelled', 'defaulted']
 
 const SELECT_CONTRACT = `
@@ -27,25 +30,16 @@ const SELECT_CONTRACT = `
 `
 
 /**
- * Сколько списать с кошелька в момент оформления.
- *   ownership    — вся цена сразу, животное переходит владельцу
- *   fixed_income — сумма вклада
- *   installment  — ничего: смысл рассрочки в том, чтобы платить потом
+ * Сколько списать с кошелька при оформлении.
+ *   investment / ownership — цена животного плюс комиссия покупки
+ *   installment            — ничего: смысл рассрочки в том, чтобы платить потом
  */
-const upfrontCost = (product, amountTiyin) => {
-  switch (product.model_type) {
-    case 'ownership': return Number(product.price_tiyin)
-    case 'fixed_income': return Number(amountTiyin)
-    case 'installment': return 0
-    default: return 0
-  }
-}
+const upfrontCost = (product, purchaseFeeBp) =>
+  product.model_type === 'installment'
+    ? 0
+    : purchaseTotal(product.price_tiyin, purchaseFeeBp)
 
-const addMonths = (date, months) => {
-  const d = new Date(date)
-  d.setMonth(d.getMonth() + Number(months || 0))
-  return d.toISOString().slice(0, 10)
-}
+const isoMonths = (date, months) => addMonths(date, Number(months || 0)).toISOString().slice(0, 10)
 
 // ── оформление ────────────────────────────────────────────
 
@@ -54,7 +48,6 @@ router.post('/contracts', requireAuth, asyncHandler(async (req, res) => {
   if (!product_id) return fail(res, 'product_id required')
   if (exit_type && !['sale', 'slaughter'].includes(exit_type)) return fail(res, 'invalid_exit_type')
 
-  const minInvestment = await getSettingInt('min_investment_tiyin')
   const client = await pool.connect()
 
   try {
@@ -79,22 +72,14 @@ router.post('/contracts', requireAuth, asyncHandler(async (req, res) => {
       return fail(res, 'no_slots_left')
     }
 
-    // Сумма договора
-    let principal
-    if (product.model_type === 'fixed_income') {
-      principal = Number(amount_tiyin)
-      if (!principal || principal <= 0) { await client.query('ROLLBACK'); return fail(res, 'amount_tiyin required') }
-      const floor = Number(product.min_amount_tiyin) || minInvestment
-      if (principal < floor) {
-        await client.query('ROLLBACK')
-        return fail(res, `amount below minimum (${floor} tiyin)`)
-      }
-    } else {
-      principal = Number(product.price_tiyin)
-      if (!principal) { await client.query('ROLLBACK'); return fail(res, 'product has no price') }
-    }
+    // Сумма договора: цена животного. Модели со ставкой у нас больше нет —
+    // животноводство не даёт гарантированного процента.
+    const principal = Number(product.price_tiyin)
+    if (!principal) { await client.query('ROLLBACK'); return fail(res, 'product has no price') }
 
-    const cost = upfrontCost(product, principal)
+    const { purchaseFeeBp } = await feeRates()
+    const cost = upfrontCost(product, purchaseFeeBp)
+    const fee = product.model_type === 'installment' ? 0 : purchaseFee(principal, purchaseFeeBp)
 
     if (cost > 0) {
       const wallet = (await client.query(
@@ -111,24 +96,34 @@ router.post('/contracts', requireAuth, asyncHandler(async (req, res) => {
       )
     }
 
-    // Для installment животное назначается позже, при отгрузке
-    const animalId = product.model_type === 'ownership' ? product.animal_id : null
+    // Животное закрепляется сразу у обеих моделей с животным.
+    // У installment оно назначается позже, при отгрузке.
+    const animalId = product.model_type === 'installment' ? null : product.animal_id
+
+    // Абонплату фиксируем в договоре: подняли тариф — старые договоры
+    // должны остаться на своей цене
+    const boardingFee = product.model_type === 'installment'
+      ? null
+      : (Number(product.boarding_fee_monthly_tiyin) || await boardingFeeMonthly())
 
     const contract = (await client.query(
       `INSERT INTO contracts
          (user_id, product_id, animal_id, model_type, status,
-          principal_tiyin, paid_tiyin, term_months, annual_rate_bp, exit_type, matures_at)
-       VALUES ($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10)
+          principal_tiyin, paid_tiyin, term_months, exit_type, matures_at,
+          boarding_fee_monthly_tiyin, boarding_accrued_until)
+       VALUES ($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10,CURRENT_DATE)
        RETURNING *`,
       [
         req.user.id, product.id, animalId, product.model_type,
-        principal, cost, product.term_months || null, product.annual_rate_bp || null,
-        product.model_type === 'ownership' ? (exit_type || 'sale') : null,
-        product.term_months ? addMonths(new Date(), product.term_months) : null,
+        principal, cost, product.term_months || null,
+        product.model_type === 'investment' ? 'sale'
+          : product.model_type === 'ownership' ? (exit_type || 'slaughter')
+          : null,
+        product.term_months ? isoMonths(new Date(), product.term_months) : null,
+        boardingFee,
       ]
     )).rows[0]
 
-    // График рассрочки
     let schedule = []
     if (product.model_type === 'installment') {
       const rows = buildSchedule(principal, product.term_months)
@@ -142,8 +137,8 @@ router.post('/contracts', requireAuth, asyncHandler(async (req, res) => {
       }
     }
 
-    if (product.model_type === 'ownership') {
-      await client.query(`UPDATE animals SET status = 'owned' WHERE id = $1`, [product.animal_id])
+    if (animalId) {
+      await client.query(`UPDATE animals SET status = 'owned' WHERE id = $1`, [animalId])
     }
 
     await client.query(
@@ -158,7 +153,8 @@ router.post('/contracts', requireAuth, asyncHandler(async (req, res) => {
         `INSERT INTO transactions (user_id, contract_id, type, amount_tiyin, description)
          VALUES ($1,$2,$3,$4,$5)`,
         [req.user.id, contract.id, 'contract_purchase', -cost,
-         `Оформление договора #${contract.id} (${product.model_type})`]
+         `Contract #${contract.id} opened (${product.model_type})`
+           + (fee ? ` incl. purchase fee ${fee}` : '')]
       )
     }
 
@@ -179,6 +175,21 @@ router.post('/contracts', requireAuth, asyncHandler(async (req, res) => {
   }
 }))
 
+
+/**
+ * Сводка по договору. У каждой модели своя: investment показывает,
+ * сколько выйдет при продаже сейчас, ownership — сколько накопилось
+ * за содержание, installment — прогресс по графику.
+ */
+const summarize = (c, rates, schedule = []) => {
+  if (c.model_type === 'installment') return installmentSummary(c, schedule)
+  if (c.model_type === 'ownership') return ownershipSummary(c)
+  return investmentPayout(c, {
+    current_weight_g: c.animal_weight_g,
+    price_per_kg_tiyin: c.price_per_kg_tiyin,
+  }, { ...rates, salePriceTiyin: c.final_sale_price_tiyin || null })
+}
+
 // ── мои договоры ──────────────────────────────────────────
 
 router.get('/contracts', requireAuth, asyncHandler(async (req, res) => {
@@ -187,7 +198,7 @@ router.get('/contracts', requireAuth, asyncHandler(async (req, res) => {
     [req.user.id]
   )).rows
 
-  const feeBp = await getSettingInt('platform_fee_bp')
+  const rates = await feeRates()
 
   // Графики забираем одним запросом на все договоры, а не по одному в цикле
   const installmentIds = contracts.filter(c => c.model_type === 'installment').map(c => c.id)
@@ -205,10 +216,7 @@ router.get('/contracts', requireAuth, asyncHandler(async (req, res) => {
 
   const withSummary = contracts.map(c => ({
     ...c,
-    summary:
-      c.model_type === 'installment' ? installmentSummary(c, byContract[c.id] || [])
-      : c.model_type === 'fixed_income' ? fixedIncomeMaturity(c)
-      : ownershipPayout(c, c, feeBp),
+    summary: summarize(c, rates, byContract[c.id] || []),
   }))
 
   ok(res, { contracts: withSummary })
@@ -226,11 +234,8 @@ router.get('/contracts/:id', requireAuth, asyncHandler(async (req, res) => {
     pool.query(`SELECT * FROM deliveries WHERE contract_id=$1 ORDER BY created_at DESC`, [req.params.id]),
   ])
 
-  const feeBp = await getSettingInt('platform_fee_bp')
-  const summary =
-    contract.model_type === 'installment' ? installmentSummary(contract, schedule.rows)
-    : contract.model_type === 'fixed_income' ? fixedIncomeMaturity(contract)
-    : ownershipPayout(contract, contract, feeBp)
+  const rates = await feeRates()
+  const summary = summarize(contract, rates, schedule.rows)
 
   ok(res, {
     contract,
@@ -256,7 +261,7 @@ router.get('/admin/contracts', requireAdmin, asyncHandler(async (req, res) => {
             (SELECT count(*)::int FROM payment_schedule s WHERE s.contract_id = c.id) AS payments_total,
             (SELECT count(*)::int FROM payment_schedule s WHERE s.contract_id = c.id AND s.status = 'paid') AS payments_paid,
             (SELECT count(*)::int FROM payment_schedule s WHERE s.contract_id = c.id AND s.status = 'overdue') AS payments_overdue,
-            (SELECT count(*)::int FROM payouts o WHERE o.contract_id = c.id AND o.kind = 'interest') AS interest_periods
+            c.boarding_accrued_tiyin, c.boarding_paid_tiyin
      FROM contracts c
      JOIN products p ON p.id = c.product_id
      JOIN users u ON u.id = c.user_id

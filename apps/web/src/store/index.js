@@ -13,7 +13,7 @@ export const useStore = create((set, get) => ({
   // PrivateRoute успевает перекинуть уже вошедшего пользователя на /auth
   // до того, как сессия восстановится (гонка при загрузке/обновлении страницы).
   isLoading: true,
-  language: localStorage.getItem(LANG_KEY) || 'ru',
+  language: localStorage.getItem(LANG_KEY) || 'en',
   sheep: [],
   myShares: [],
   transactions: [],

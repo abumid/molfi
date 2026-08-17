@@ -3,7 +3,7 @@ import { pool } from '../db/pool.js'
 import { ok, fail, asyncHandler } from '../utils/response.js'
 import { requireAuth, requireAdmin } from '../middleware/auth.js'
 import { getSettingInt } from '../utils/settings.js'
-import { installmentSummary, lateFee } from '../utils/calculations.js'
+import { installmentSummary, lateFee, boardingOutstanding } from '../utils/calculations.js'
 
 const router = Router()
 
@@ -101,7 +101,7 @@ router.post('/payments/pay', requireAuth, asyncHandler(async (req, res) => {
       `INSERT INTO transactions (user_id, contract_id, type, amount_tiyin, description)
        VALUES ($1,$2,'installment_payment',$3,$4)`,
       [req.user.id, contract_id, -total,
-       `Платёж ${installment.seq} по договору #${contract_id}` + (penalty ? ` (пеня ${penalty})` : '')]
+       `Instalment ${installment.seq} of contract #${contract_id}` + (penalty ? ` (late fee ${penalty})` : '')]
     )
 
     // Последний платёж закрывает договор
@@ -165,6 +165,120 @@ router.post('/admin/payments/:id/waive', requireAdmin, asyncHandler(async (req, 
 
     await client.query('COMMIT')
     ok(res, { payment: waived, remaining_payments: left })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    throw e
+  } finally {
+    client.release()
+  }
+}))
+
+/**
+ * Отметить платёж полученным, минуя кошелёк. Нужно, когда клиент заплатил
+ * наличными или переводом на счёт фермы: деньги пришли, но не через платформу.
+ * Кошелёк и transactions намеренно не трогаем — иначе баланс покажет средства,
+ * которых у клиента на платформе нет, и сверка перестанет сходиться.
+ */
+router.post('/admin/payments/:id/mark-paid', requireAdmin, asyncHandler(async (req, res) => {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const installment = (await client.query(
+      `SELECT * FROM payment_schedule WHERE id = $1 FOR UPDATE`,
+      [req.params.id]
+    )).rows[0]
+    if (!installment) { await client.query('ROLLBACK'); return fail(res, 'not_found', 404) }
+    if (installment.status === 'paid') { await client.query('ROLLBACK'); return fail(res, 'already_paid') }
+    if (installment.status === 'waived') { await client.query('ROLLBACK'); return fail(res, 'already_waived') }
+
+    const due = Number(installment.amount_tiyin) - Number(installment.paid_tiyin || 0)
+
+    const paid = (await client.query(
+      `UPDATE payment_schedule
+       SET paid_tiyin = amount_tiyin, status = 'paid', paid_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [req.params.id]
+    )).rows[0]
+
+    await client.query(
+      `UPDATE contracts SET paid_tiyin = paid_tiyin + $1 WHERE id = $2`,
+      [due, installment.contract_id]
+    )
+
+    const left = (await client.query(
+      `SELECT count(*)::int AS n FROM payment_schedule
+       WHERE contract_id = $1 AND status NOT IN ('paid','waived')`,
+      [installment.contract_id]
+    )).rows[0].n
+
+    if (left === 0) {
+      await client.query(
+        `UPDATE contracts SET status = 'completed', closed_at = NOW() WHERE id = $1`,
+        [installment.contract_id]
+      )
+    }
+
+    await client.query('COMMIT')
+    ok(res, { payment: paid, remaining_payments: left, offline: true })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    throw e
+  } finally {
+    client.release()
+  }
+}))
+
+/**
+ * Оплата накопленной абонплаты за содержание.
+ * Нужна модели ownership: там нет продажи, из выручки долг не погасить,
+ * поэтому клиент гасит его с кошелька сам.
+ */
+router.post('/payments/boarding', requireAuth, asyncHandler(async (req, res) => {
+  const { contract_id, amount_tiyin } = req.body
+  if (!contract_id) return fail(res, 'contract_id required')
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const contract = (await client.query(
+      `SELECT * FROM contracts WHERE id = $1 FOR UPDATE`, [contract_id]
+    )).rows[0]
+    if (!contract) { await client.query('ROLLBACK'); return fail(res, 'contract_not_found', 404) }
+    if (contract.user_id !== req.user.id) { await client.query('ROLLBACK'); return fail(res, 'Forbidden', 403) }
+
+    const outstanding = boardingOutstanding(contract)
+    if (outstanding <= 0) { await client.query('ROLLBACK'); return fail(res, 'nothing_to_pay') }
+
+    // Частичная оплата разрешена: долг за год может быть неподъёмным разом
+    const amount = amount_tiyin ? Math.min(Number(amount_tiyin), outstanding) : outstanding
+    if (amount <= 0) { await client.query('ROLLBACK'); return fail(res, 'invalid_amount') }
+
+    const wallet = (await client.query(
+      `SELECT balance_tiyin FROM wallet_balances WHERE user_id = $1 FOR UPDATE`, [req.user.id]
+    )).rows[0]
+    if (!wallet || Number(wallet.balance_tiyin) < amount) {
+      await client.query('ROLLBACK')
+      return fail(res, 'insufficient_balance')
+    }
+
+    await client.query(
+      `UPDATE wallet_balances SET balance_tiyin = balance_tiyin - $1, updated_at = NOW() WHERE user_id = $2`,
+      [amount, req.user.id]
+    )
+    const updated = (await client.query(
+      `UPDATE contracts SET boarding_paid_tiyin = boarding_paid_tiyin + $2 WHERE id = $1 RETURNING *`,
+      [contract_id, amount]
+    )).rows[0]
+    await client.query(
+      `INSERT INTO transactions (user_id, contract_id, type, amount_tiyin, description)
+       VALUES ($1,$2,'boarding_payment',$3,$4)`,
+      [req.user.id, contract_id, -amount, `Boarding fee for contract #${contract_id}`]
+    )
+
+    await client.query('COMMIT')
+    ok(res, { contract: updated, paid_tiyin: amount, outstanding_tiyin: boardingOutstanding(updated) })
   } catch (e) {
     await client.query('ROLLBACK')
     throw e

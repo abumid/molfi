@@ -1,202 +1,188 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Layout from '../Layout'
 import { api, formatSum, formatDate } from '../api'
 import { useStore } from '../store'
 import { useT } from '../i18n'
 
-const TX_TYPES = ['investment', 'deposit', 'withdrawal', 'payout', 'topup', 'share_purchase']
+// Типы, увеличивающие баланс. Список тот же, что в admin.js на бэкенде —
+// если он разъедется, форма покажет один знак, а сервер применит другой.
+const INCOME_TYPES = ['deposit', 'payout', 'topup']
+
+const ALL_TYPES = [
+  'deposit', 'withdrawal', 'topup', 'payout',
+  'contract_purchase', 'installment_payment',
+]
+
+const EMPTY = { user_id: '', type: 'deposit', amount_sum: '', description: '' }
 
 export default function Transactions() {
-  const { language } = useStore()
+  const language = useStore(s => s.language)
   const t = useT(language)
-  const [txs, setTxs] = useState([])
+
+  const [items, setItems] = useState([])
+  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
-  const [searchTx, setSearchTx] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [editTx, setEditTx] = useState(null)
-  const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState('all')
 
-  useEffect(() => {
-    api.get('/admin/transactions')
-      .then(d => { setTxs(d.transactions || []); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [])
+  const [creating, setCreating] = useState(false)
+  const [form, setForm] = useState(EMPTY)
+  const [editing, setEditing] = useState(null)
+  const [editForm, setEditForm] = useState({ description: '', type: '', amount_sum: '' })
 
-  const handleDeleteTx = async (id, amount, type) => {
-    const amountSum = Math.floor(Number(amount) / 100)
-    if (!confirm(
-      language === 'uz'
-        ? `Tranzaksiyani o'chirishni tasdiqlaysizmi? Balans avtomatik qaytariladi.`
-        : `Удалить транзакцию на ${new Intl.NumberFormat('ru-UZ').format(amountSum)} сум? Баланс будет автоматически скорректирован.`
-    )) return
-    try {
-      await api.delete(`/admin/transactions/${id}`)
-      setTxs(prev => prev.filter(tx => tx.id !== id))
-    } catch (e) {
-      alert((language === 'uz' ? 'Xatolik: ' : 'Ошибка: ') + e.message)
-    }
+  const load = () => {
+    setLoading(true)
+    Promise.all([api.get('/admin/transactions'), api.get('/admin/users')])
+      .then(([tx, us]) => {
+        setItems(tx.transactions || [])
+        setUsers(us.users || [])
+      })
+      .catch(e => alert(t('common.error') + ': ' + e.message))
+      .finally(() => setLoading(false))
   }
 
-  const handleEditTx = (tx) => {
-    setEditTx(tx)
-    setEditForm({
-      description: tx.description || '',
-      type: tx.type || '',
-      amount_sum: String(Math.floor(Number(tx.amount_tiyin) / 100)),
+  useEffect(() => { load() }, [])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return items.filter(x => {
+      if (typeFilter !== 'all' && x.type !== typeFilter) return false
+      if (!q) return true
+      return [x.user_phone, x.description, x.type, String(x.id)]
+        .some(v => String(v || '').toLowerCase().includes(q))
     })
+  }, [items, search, typeFilter])
+
+  const typeLabel = (type) => {
+    const key = 'transactions.' + type
+    const label = t(key)
+    return label === key ? type : label
   }
 
-  const handleSaveEdit = async () => {
+  const create = async () => {
     setSaving(true)
     try {
-      const payload = {
-        description: editForm.description || null,
-        type: editForm.type || null,
-        amount_tiyin: Math.round(Number(editForm.amount_sum) * 100),
-      }
-      await api.put(`/admin/transactions/${editTx.id}`, payload)
-      setTxs(prev => prev.map(tx =>
-        tx.id === editTx.id
-          ? { ...tx, description: payload.description, type: payload.type, amount_tiyin: payload.amount_tiyin }
-          : tx
-      ))
-      setEditTx(null)
+      await api.post('/admin/transactions', {
+        user_id: Number(form.user_id),
+        type: form.type,
+        amount_tiyin: Math.round(Number(form.amount_sum) * 100),
+        description: form.description || null,
+      })
+      setCreating(false)
+      setForm(EMPTY)
+      load()
     } catch (e) {
-      alert((language === 'uz' ? 'Xatolik: ' : 'Ошибка: ') + e.message)
-    } finally {
-      setSaving(false)
+      alert(t('common.error') + ': ' + e.message)
+    }
+    setSaving(false)
+  }
+
+  const saveEdit = async () => {
+    setSaving(true)
+    try {
+      await api.put(`/admin/transactions/${editing.id}`, {
+        description: editForm.description,
+        type: editForm.type,
+        amount_tiyin: Math.round(Number(editForm.amount_sum) * 100),
+      })
+      setEditing(null)
+      load()
+    } catch (e) {
+      alert(t('common.error') + ': ' + e.message)
+    }
+    setSaving(false)
+  }
+
+  const remove = async (x) => {
+    if (!confirm(t('transactions.deleteConfirm'))) return
+    try {
+      await api.delete(`/admin/transactions/${x.id}`)
+      load()
+    } catch (e) {
+      alert(t('common.error') + ': ' + e.message)
     }
   }
 
-  const TYPE_INFO = {
-    investment:     { icon: '📈', label: t('transactions.investment'), badge: 'badge-blue' },
-    payout:         { icon: '💰', label: t('transactions.payout'), badge: 'badge-green' },
-    deposit:        { icon: '⬆️', label: t('transactions.deposit'), badge: 'badge-green' },
-    withdrawal:     { icon: '⬇️', label: t('transactions.withdrawal'), badge: 'badge-red' },
-    topup:          { icon: '💳', label: 'Пополнение', badge: 'badge-green' },
-    share_purchase: { icon: '🐑', label: 'Покупка доли', badge: 'badge-blue' },
-  }
-
-  const FILTERS = [
-    ['all', t('common.all')],
-    ['investment', t('transactions.investment')],
-    ['deposit', t('transactions.deposit')],
-    ['payout', t('transactions.payout')],
-    ['withdrawal', t('transactions.withdrawal')],
-  ]
-
-  const filtered = txs.filter(tx => {
-    const matchType = filter === 'all' || tx.type === filter
-    const matchSearch = !searchTx ||
-      tx.user_phone?.includes(searchTx) ||
-      tx.description?.toLowerCase().includes(searchTx.toLowerCase())
-    const txDate = new Date(tx.created_at)
-    const matchFrom = !dateFrom || txDate >= new Date(dateFrom)
-    const matchTo = !dateTo || txDate <= new Date(dateTo + 'T23:59:59')
-    return matchType && matchSearch && matchFrom && matchTo
-  })
+  const isIncome = INCOME_TYPES.includes(form.type)
 
   return (
     <Layout title={t('transactions.title')}>
       <div className="card">
-        <div className="card-title">
-          {t('transactions.title')} ({filtered.length})
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {FILTERS.map(([key, label]) => (
-              <button
-                key={key}
-                className={`btn btn-sm ${filter === key ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setFilter(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{t('transactions.title')} ({filtered.length})</span>
+          <button className="btn btn-primary" onClick={() => { setForm(EMPTY); setCreating(true) }}>
+            {t('transactions.addBtn')}
+          </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
           <input
-            className="search-input"
-            placeholder={language === 'uz' ? "Telefon bo'yicha..." : 'Поиск по телефону...'}
-            value={searchTx}
-            onChange={e => setSearchTx(e.target.value)}
-            style={{ width: 200 }}
+            className="search-input" style={{ flex: 1, minWidth: 200 }}
+            placeholder={t('common.search')}
+            value={search} onChange={e => setSearch(e.target.value)}
           />
-          <input
-            className="form-input"
-            type="date"
-            value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
-            style={{ width: 160, padding: '7px 12px' }}
-          />
-          <input
-            className="form-input"
-            type="date"
-            value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
-            style={{ width: 160, padding: '7px 12px' }}
-          />
-          {(searchTx || dateFrom || dateTo) && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => { setSearchTx(''); setDateFrom(''); setDateTo('') }}
-            >
-              {language === 'uz' ? 'Tozalash' : 'Сбросить'}
-            </button>
-          )}
+          <select className="form-select" style={{ width: 'auto' }} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
+            <option value="all">{t('common.all')}</option>
+            {ALL_TYPES.map(x => <option key={x} value={x}>{typeLabel(x)}</option>)}
+          </select>
         </div>
 
         {loading ? (
           <div className="loading">{t('common.loading')}</div>
+        ) : filtered.length === 0 ? (
+          <div className="empty">
+            <div className="empty-icon">💰</div>
+            {t('transactions.notFound')}
+          </div>
         ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>{t('common.id')}</th>
-                  <th>{t('transactions.type')}</th>
                   <th>{t('transactions.user')}</th>
-                  <th>{t('transactions.description')}</th>
+                  <th>{t('transactions.type')}</th>
                   <th>{t('transactions.amount')}</th>
+                  <th>{t('transactions.contract')}</th>
+                  <th>{t('transactions.description')}</th>
                   <th>{t('common.date')}</th>
-                  <th>{language === 'uz' ? 'Amallar' : 'Действия'}</th>
+                  <th>{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(tx => {
-                  const info = TYPE_INFO[tx.type] || { icon: '💳', label: tx.type, badge: 'badge-blue' }
-                  const isIncome = ['payout', 'deposit', 'topup'].includes(tx.type)
+                {filtered.map(x => {
+                  const income = INCOME_TYPES.includes(x.type)
                   return (
-                    <tr key={tx.id}>
-                      <td style={{ color: '#8892a4' }}>#{tx.id}</td>
-                      <td>
-                        <span style={{ marginRight: 6 }}>{info.icon}</span>
-                        <span className={`badge ${info.badge}`}>{info.label}</span>
+                    <tr key={x.id}>
+                      <td>{x.id}</td>
+                      <td>{x.user_phone || '#' + x.user_id}</td>
+                      <td><span className="badge badge-blue">{typeLabel(x.type)}</span></td>
+                      <td style={{ color: income ? 'var(--accent)' : 'var(--red)', fontWeight: 600 }}>
+                        {income ? '+' : '−'}{formatSum(Math.abs(Number(x.amount_tiyin)), language)}
                       </td>
-                      <td>{tx.user_phone || `#${tx.user_id}`}</td>
-                      <td style={{ color: '#8892a4' }}>{tx.description || '—'}</td>
-                      <td style={{ fontWeight: 600, color: isIncome ? '#6fcf4a' : '#ef4444' }}>
-                        {isIncome ? '+' : '-'}{formatSum(tx.amount_tiyin)}
+                      <td style={{ fontSize: 12, color: 'var(--muted)' }}>
+                        {x.contract_id ? '#' + x.contract_id : t('common.none')}
                       </td>
-                      <td style={{ color: '#8892a4' }}>{formatDate(tx.created_at)}</td>
+                      <td style={{ fontSize: 12 }}>{x.description || t('common.none')}</td>
+                      <td style={{ fontSize: 12, color: 'var(--muted)' }}>{formatDate(x.created_at, language)}</td>
                       <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 6 }}>
                           <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleEditTx(tx)}
-                            title={language === 'uz' ? 'Tahrirlash' : 'Редактировать'}
+                            className="btn btn-sm btn-secondary"
+                            onClick={() => {
+                              setEditing(x)
+                              setEditForm({
+                                description: x.description || '',
+                                type: x.type,
+                                amount_sum: String(Math.floor(Math.abs(Number(x.amount_tiyin)) / 100)),
+                              })
+                            }}
                           >
-                            ✏️
+                            {t('common.edit')}
                           </button>
-                          <button
-                            className="btn btn-danger btn-sm"
-                            onClick={() => handleDeleteTx(tx.id, tx.amount_tiyin, tx.type)}
-                            title={language === 'uz' ? "O'chirish" : 'Удалить'}
-                          >
-                            ✕
+                          <button className="btn btn-sm btn-danger" onClick={() => remove(x)}>
+                            {t('common.delete')}
                           </button>
                         </div>
                       </td>
@@ -205,75 +191,111 @@ export default function Transactions() {
                 })}
               </tbody>
             </table>
-            {filtered.length === 0 && (
-              <div className="empty">
-                <div className="empty-icon">💰</div>
-                {t('transactions.notFound')}
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {editTx && (
-        <div className="modal-overlay" onClick={() => setEditTx(null)}>
+      {creating && (
+        <div className="modal-overlay" onClick={() => setCreating(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">
-              {language === 'uz' ? 'Tranzaksiyani tahrirlash' : 'Редактировать транзакцию'} #{editTx.id}
+            <div className="modal-title">{t('transactions.addTitle')}</div>
+
+            <div className="form-group">
+              <label className="form-label">{t('transactions.user')}</label>
+              <select className="form-select" value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))}>
+                <option value="">{t('transactions.chooseUser')}</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>
+                    #{u.id} {u.name || ''} {u.phone}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <label className="form-label">
-              {language === 'uz' ? 'Tur' : 'Тип'}
-            </label>
-            <select
-              className="form-input"
-              value={editForm.type}
-              onChange={e => setEditForm(f => ({ ...f, type: e.target.value }))}
-              style={{ marginBottom: 12 }}
-            >
-              {TX_TYPES.map(tp => (
-                <option key={tp} value={tp}>{tp}</option>
-              ))}
-            </select>
+            <div className="form-group">
+              <label className="form-label">{t('transactions.type')}</label>
+              <select className="form-select" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+                {ALL_TYPES.map(x => <option key={x} value={x}>{typeLabel(x)}</option>)}
+              </select>
+            </div>
 
-            <label className="form-label">
-              {language === 'uz' ? "Miqdor (so'm)" : 'Сумма (сум)'}
-            </label>
-            <input
-              className="form-input"
-              type="number"
-              value={editForm.amount_sum}
-              onChange={e => setEditForm(f => ({ ...f, amount_sum: e.target.value }))}
-              style={{ marginBottom: 12 }}
-            />
+            <div className="form-group">
+              <label className="form-label">{t('transactions.amountSum')}</label>
+              <input
+                className="form-input" type="number" min="0"
+                value={form.amount_sum}
+                onChange={e => setForm(f => ({ ...f, amount_sum: e.target.value }))}
+              />
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                {t('transactions.amountHint')}
+              </div>
+              {form.amount_sum && (
+                <div style={{ fontSize: 12, marginTop: 6, color: isIncome ? 'var(--accent)' : 'var(--red)' }}>
+                  {isIncome ? '+' : '−'}{formatSum(Math.abs(Number(form.amount_sum)) * 100, language)}
+                  {' — '}
+                  {isIncome ? t('transactions.willAdd') : t('transactions.willSubtract')}
+                </div>
+              )}
+            </div>
 
-            <label className="form-label">
-              {language === 'uz' ? 'Tavsif' : 'Описание'}
-            </label>
-            <input
-              className="form-input"
-              value={editForm.description}
-              onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
-              style={{ marginBottom: 20 }}
-            />
+            <div className="form-group">
+              <label className="form-label">{t('transactions.description')}</label>
+              <input
+                className="form-input"
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              />
+            </div>
 
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
               <button
-                className="btn btn-primary"
-                onClick={handleSaveEdit}
-                disabled={saving}
+                className="btn btn-primary" style={{ flex: 1 }}
+                disabled={saving || !form.user_id || !form.amount_sum}
+                onClick={create}
               >
-                {saving
-                  ? (language === 'uz' ? 'Saqlanmoqda...' : 'Сохранение...')
-                  : (language === 'uz' ? 'Saqlash' : 'Сохранить')}
+                {saving ? t('common.adding') : t('common.add')}
               </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setEditTx(null)}
-                disabled={saving}
-              >
-                {language === 'uz' ? 'Bekor qilish' : 'Отмена'}
+              <button className="btn btn-secondary" onClick={() => setCreating(false)}>{t('common.cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div className="modal-overlay" onClick={() => setEditing(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">{t('transactions.editTitle')} — #{editing.id}</div>
+
+            <div className="form-group">
+              <label className="form-label">{t('transactions.type')}</label>
+              <select className="form-select" value={editForm.type} onChange={e => setEditForm(f => ({ ...f, type: e.target.value }))}>
+                {ALL_TYPES.map(x => <option key={x} value={x}>{typeLabel(x)}</option>)}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{t('transactions.amountSum')}</label>
+              <input
+                className="form-input" type="number"
+                value={editForm.amount_sum}
+                onChange={e => setEditForm(f => ({ ...f, amount_sum: e.target.value }))}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{t('transactions.description')}</label>
+              <input
+                className="form-input"
+                value={editForm.description}
+                onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} disabled={saving} onClick={saveEdit}>
+                {saving ? t('common.saving') : t('common.save')}
               </button>
+              <button className="btn btn-secondary" onClick={() => setEditing(null)}>{t('common.cancel')}</button>
             </div>
           </div>
         </div>

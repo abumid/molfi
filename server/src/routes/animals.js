@@ -2,8 +2,8 @@ import { Router } from 'express'
 import { pool } from '../db/pool.js'
 import { ok, fail, asyncHandler } from '../utils/response.js'
 import { requireAdmin } from '../middleware/auth.js'
-import { getSettingInt } from '../utils/settings.js'
-import { ownershipPayout } from '../utils/calculations.js'
+import { feeRates } from '../utils/settings.js'
+import { investmentPayout, boardingDue } from '../utils/calculations.js'
 
 const router = Router()
 
@@ -177,16 +177,21 @@ router.delete('/admin/animals/:id', requireAdmin, asyncHandler(async (req, res) 
 }))
 
 /**
- * Продажа животного. Заменяет POST /admin/sheep/:id/sell из v1:
- * тот делил выручку между дольщиками, теперь владелец один.
- * Комиссия берётся только с прибыли — при убытке владелец
- * получает всю выручку целиком.
+ * Продажа животного по договору investment.
+ *
+ * Из выручки сначала гасится накопленная абонплата за содержание,
+ * потом считается прибыль и с неё берётся комиссия. Порядок важен:
+ * комиссия с выручки означала бы, что при падении цены клиент платит
+ * процент за собственный убыток.
+ *
+ * Договоры ownership так не закрываются — там клиент забирает животное
+ * или мясо, денежного возврата нет.
  */
 router.post('/admin/animals/:id/sell', requireAdmin, asyncHandler(async (req, res) => {
   const { final_weight_g, final_sale_price_tiyin } = req.body
   if (!final_sale_price_tiyin) return fail(res, 'final_sale_price_tiyin required')
 
-  const feeBp = await getSettingInt('platform_fee_bp')
+  const rates = await feeRates()
   const client = await pool.connect()
 
   try {
@@ -204,7 +209,7 @@ router.post('/admin/animals/:id/sell', requireAdmin, asyncHandler(async (req, re
 
     const contract = (await client.query(
       `SELECT * FROM contracts
-       WHERE animal_id=$1 AND model_type='ownership' AND status IN ('pending','active')
+       WHERE animal_id=$1 AND model_type IN ('investment','ownership') AND status IN ('pending','active')
        FOR UPDATE`,
       [req.params.id]
     )).rows[0]
@@ -215,7 +220,26 @@ router.post('/admin/animals/:id/sell', requireAdmin, asyncHandler(async (req, re
       return ok(res, { animal: updated, payout: null, note: 'no_active_ownership_contract' })
     }
 
-    const calc = ownershipPayout(contract, updated, feeBp)
+    // Владение закрывается выдачей животного, а не продажей
+    if (contract.model_type === 'ownership') {
+      await client.query('ROLLBACK')
+      return fail(res, 'ownership_contract_is_closed_by_handover')
+    }
+
+    // Добираем содержание за месяцы, которые крон ещё не успел начислить
+    const accrued = Math.max(Number(contract.boarding_accrued_tiyin) || 0, boardingDue(contract))
+    if (accrued !== Number(contract.boarding_accrued_tiyin)) {
+      await client.query(
+        `UPDATE contracts SET boarding_accrued_tiyin = $2, boarding_accrued_until = CURRENT_DATE WHERE id = $1`,
+        [contract.id, accrued]
+      )
+      contract.boarding_accrued_tiyin = accrued
+    }
+
+    const calc = investmentPayout(contract, updated, {
+      ...rates,
+      salePriceTiyin: final_sale_price_tiyin,
+    })
 
     await client.query(
       `INSERT INTO wallet_balances (user_id, balance_tiyin) VALUES ($1,$2)
@@ -231,10 +255,14 @@ router.post('/admin/animals/:id/sell', requireAdmin, asyncHandler(async (req, re
       `INSERT INTO transactions (user_id, contract_id, type, amount_tiyin, description)
        VALUES ($1,$2,'payout',$3,$4)`,
       [contract.user_id, contract.id, calc.net,
-       `Выплата за продажу «${animal.name}» (комиссия ${calc.fee} тийин)`]
+       `Sale proceeds for ${animal.name}`
+         + (calc.boarding ? `, boarding ${calc.boarding}` : '')
+         + (calc.fee_client ? `, fee ${calc.fee_client}` : '')]
     )
     await client.query(
-      `UPDATE contracts SET status='completed', payout_tiyin=$2, closed_at=NOW() WHERE id=$1`,
+      `UPDATE contracts SET status='completed', payout_tiyin=$2,
+              boarding_paid_tiyin = boarding_accrued_tiyin, closed_at=NOW()
+       WHERE id=$1`,
       [contract.id, calc.net]
     )
 

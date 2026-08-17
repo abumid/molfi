@@ -44,17 +44,30 @@ export const api = {
   }
 }
 
-export const formatSum = (tiyin) => {
-  const num = Number(tiyin) || 0
-  return new Intl.NumberFormat('ru-UZ').format(
-    Math.floor(num / 100)
-  ) + ' сум'
+// Валюта и разделители зависят от языка: при английском интерфейсе
+// суммы не должны выходить по-русски.
+const LOCALE = { en: 'en-US', ru: 'ru-RU', uz: 'uz-UZ' }
+const CURRENCY = { en: 'UZS', ru: 'сум', uz: "so'm" }
+
+export const formatSum = (tiyin, language = 'en') => {
+  const num = Math.floor((Number(tiyin) || 0) / 100)
+  const locale = LOCALE[language] || LOCALE.en
+  const currency = CURRENCY[language] || CURRENCY.en
+  return `${new Intl.NumberFormat(locale).format(num)} ${currency}`
 }
 
-export const formatDate = (date) => {
+export const formatDate = (date, language = 'en') => {
   if (!date) return '—'
-  return new Date(date).toLocaleDateString('ru-RU', {
+  return new Date(date).toLocaleDateString(LOCALE[language] || LOCALE.en, {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
+  })
+}
+
+/** Без времени — для сроков платежей и дат рождения. */
+export const formatDay = (date, language = 'en') => {
+  if (!date) return '—'
+  return new Date(date).toLocaleDateString(LOCALE[language] || LOCALE.en, {
+    day: '2-digit', month: '2-digit', year: 'numeric'
   })
 }

@@ -9,7 +9,10 @@
     "migrate": "node src/db/migrate.js",
     "seed": "node src/db/seed.js",
     "smoke": "node test/smoke.mjs",
-    "e2e": "node test/e2e.mjs"
+    "e2e": "node test/e2e.mjs",
+    "jobs": "node test/jobs.mjs",
+    "job:boarding": "node src/jobs/accrueBoarding.js",
+    "job:overdue": "node src/jobs/markOverdue.js"
   },
   "keywords": [],
   "author": "Umid Abidjanov",

@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from './store'
-import { useT } from './i18n'
+import { useT, LANGUAGES } from './i18n'
 
 export default function Layout({ children, title }) {
   const { pathname } = useLocation()
@@ -8,13 +8,34 @@ export default function Layout({ children, title }) {
   const { admin, logout, language, setLanguage } = useStore()
   const t = useT(language)
 
-  const NAV = [
-    { path: '/', icon: '📊', label: t('nav.dashboard') },
-    { path: '/users', icon: '👥', label: t('nav.users') },
-    { path: '/sheep', icon: '🐑', label: t('nav.sheep') },
-    { path: '/activity', icon: '📋', label: t('nav.activity') },
-    { path: '/shares', icon: '📈', label: t('nav.shares') },
-    { path: '/transactions', icon: '💰', label: t('nav.transactions') },
+  // Девять пунктов — сайдбар плотный, поэтому разбит на две группы.
+  // Ферма — то, чем управляет зоотехник; продажи — то, чем финансист.
+  const GROUPS = [
+    {
+      items: [
+        { path: '/', icon: '📊', label: t('nav.dashboard') },
+      ],
+    },
+    {
+      items: [
+        { path: '/animals', icon: '🐑', label: t('nav.animals') },
+        { path: '/activity', icon: '📋', label: t('nav.activity') },
+      ],
+    },
+    {
+      items: [
+        { path: '/products', icon: '🏷️', label: t('nav.products') },
+        { path: '/contracts', icon: '📄', label: t('nav.contracts') },
+        { path: '/payments', icon: '📅', label: t('nav.payments') },
+      ],
+    },
+    {
+      items: [
+        { path: '/users', icon: '👥', label: t('nav.users') },
+        { path: '/transactions', icon: '💰', label: t('nav.transactions') },
+        { path: '/settings', icon: '⚙️', label: t('nav.settings') },
+      ],
+    },
   ]
 
   return (
@@ -26,21 +47,28 @@ export default function Layout({ children, title }) {
         </div>
 
         <nav className="sidebar-nav">
-          {NAV.map(item => (
-            <button
-              key={item.path}
-              className={`nav-item ${pathname === item.path ? 'active' : ''}`}
-              onClick={() => navigate(item.path)}
+          {GROUPS.map((group, gi) => (
+            <div
+              key={gi}
+              style={gi ? { marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' } : undefined}
             >
-              <span className="nav-icon">{item.icon}</span>
-              {item.label}
-            </button>
+              {group.items.map(item => (
+                <button
+                  key={item.path}
+                  className={`nav-item ${pathname === item.path ? 'active' : ''}`}
+                  onClick={() => navigate(item.path)}
+                >
+                  <span className="nav-icon">{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
         <div className="sidebar-footer">
           <div className="lang-toggle">
-            {['uz', 'ru'].map(lang => (
+            {LANGUAGES.map(({ code: lang }) => (
               <button
                 key={lang}
                 className={`lang-btn ${language === lang ? 'active' : ''}`}

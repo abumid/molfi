@@ -12,16 +12,17 @@ const TTL_MS = 60 * 1000
 // Значения на случай, если строки в базе нет вообще. Совпадают с тем,
 // что засевает миграция, — чтобы поведение не разъезжалось.
 const FALLBACK = {
-  platform_fee_bp: '300',
-  boarding_fee_monthly_tiyin: '0',
+  boarding_fee_monthly_tiyin: '4000000',
+  purchase_fee_bp: '0',
+  profit_fee_client_bp: '0',
+  profit_fee_farm_bp: '0',
   late_fee_bp: '0',
-  min_investment_tiyin: '100000000',
   overdue_grace_days: '5',
   default_after_missed: '3',
-  models_enabled: 'ownership,fixed_income',
+  models_enabled: 'investment,ownership',
 }
 
-export const ALL_MODELS = ['ownership', 'installment', 'fixed_income']
+export const ALL_MODELS = ['investment', 'ownership', 'installment']
 
 let cache = null
 let loadedAt = 0
@@ -72,8 +73,18 @@ export const invalidateSettings = () => {
   loadedAt = 0
 }
 
-/** Комиссия платформы в базисных пунктах. Самая частая настройка. */
-export const platformFeeBp = () => getSettingInt('platform_fee_bp')
+/** Абонплата за содержание по умолчанию. Оффер может её переопределить. */
+export const boardingFeeMonthly = () => getSettingInt('boarding_fee_monthly_tiyin')
+
+/**
+ * Тарифы одним объектом — расчётам нужны все три сразу, а ходить
+ * за каждым отдельно значит трижды пройти по одному и тому же кэшу.
+ */
+export const feeRates = async () => ({
+  purchaseFeeBp: await getSettingInt('purchase_fee_bp'),
+  profitFeeClientBp: await getSettingInt('profit_fee_client_bp'),
+  profitFeeFarmBp: await getSettingInt('profit_fee_farm_bp'),
+})
 
 /**
  * Какие модели сейчас открыты. Держим в settings, а не в коде, чтобы

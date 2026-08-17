@@ -2,16 +2,11 @@ import { useState } from 'react'
 import { useStore } from '../store'
 import { useT } from '../i18n'
 import { api } from '../utils/api'
-
-const formatSum = (tiyin) => {
-  const num = Number(tiyin) || 0
-  return new Intl.NumberFormat('ru-UZ').format(
-    Math.floor(num / 100)
-  ) + ' сум'
-}
+import { formatSum } from '../utils/format'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 export default function Profile() {
-  const { user, language, setLanguage, logout, balance, myShares, updateProfile } = useStore()
+  const { user, language, logout, balance, myShares, updateProfile } = useStore()
   const t = useT(language)
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(user?.name || '')
@@ -55,7 +50,7 @@ export default function Profile() {
         fontSize: 22,
         marginBottom: 24
       }}>
-        {language === 'uz' ? 'Profil' : 'Профиль'}
+        {t.profile.title}
       </h1>
 
       {/* Аватар + имя */}
@@ -107,8 +102,7 @@ export default function Profile() {
                   outline: 'none'
                 }}
                 placeholder={
-                  language === 'uz' ? 'Ismingiz' : 'Ваше имя'
-                }
+t.profile.name_placeholder}
               />
               <button
                 onClick={handleSaveName}
@@ -126,7 +120,7 @@ export default function Profile() {
               >
                 {saving
                   ? '...'
-                  : (language === 'uz' ? 'Saqlash' : 'Сохранить')}
+                  : t.profile.save}
               </button>
               <button
                 onClick={() => { setEditing(false); setName(user?.name || '') }}
@@ -149,7 +143,7 @@ export default function Profile() {
               onClick={() => setEditing(true)}
             >
               <span style={{ fontSize: 17, fontWeight: 600 }}>
-                {user?.name || (language === 'uz' ? 'Ism kiritilmagan' : 'Имя не указано')}
+                {user?.name || t.profile.no_name}
               </span>
               <span style={{ fontSize: 14, color: 'var(--color-green-light)' }}>✏️</span>
             </div>
@@ -169,7 +163,7 @@ export default function Profile() {
               fontSize: 12,
               marginTop: 4
             }}>
-              ✓ {language === 'uz' ? 'Saqlandi' : 'Сохранено'}
+              ✓ {t.profile.saved}
             </div>
           )}
         </div>
@@ -192,7 +186,7 @@ export default function Profile() {
           letterSpacing: 1,
           fontWeight: 600
         }}>
-          {language === 'uz' ? 'Statistika' : 'Статистика'}
+          {t.profile.stats}
         </div>
 
         {/* Баланс */}
@@ -204,10 +198,10 @@ export default function Profile() {
           borderBottom: '1px solid var(--color-border)'
         }}>
           <span style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>
-            {language === 'uz' ? 'Balans' : 'Баланс'}
+            {t.wallet.balance}
           </span>
           <span style={{ color: 'var(--color-green-light)', fontWeight: 700, fontSize: 15 }}>
-            {formatSum(balance)}
+            {formatSum(balance, language)}
           </span>
         </div>
 
@@ -220,10 +214,10 @@ export default function Profile() {
           borderBottom: '1px solid var(--color-border)'
         }}>
           <span style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>
-            {language === 'uz' ? 'Investitsiya qilingan' : 'Вложено в активы'}
+            {t.profile.invested}
           </span>
           <span style={{ color: 'var(--color-accent)', fontWeight: 700, fontSize: 15 }}>
-            {formatSum(totalInvested)}
+            {formatSum(totalInvested, language)}
           </span>
         </div>
 
@@ -236,7 +230,7 @@ export default function Profile() {
           borderBottom: '1px solid var(--color-border)'
         }}>
           <span style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>
-            {language === 'uz' ? 'Faol ulushlar' : 'Активных долей'}
+            {t.profile.active_shares}
           </span>
           <span style={{ color: 'var(--color-text)', fontWeight: 700, fontSize: 15 }}>
             {activeShares}
@@ -251,10 +245,10 @@ export default function Profile() {
           padding: '14px 16px'
         }}>
           <span style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>
-            {language === 'uz' ? 'Kutilayotgan to\'lov' : 'Ожидаемая выплата'}
+            {t.profile.expected_payout}
           </span>
           <span style={{ color: 'var(--color-green-light)', fontWeight: 700, fontSize: 15 }}>
-            ~{formatSum(totalInvested * 0.15)}
+            ~{formatSum(totalInvested * 0.15, language)}
           </span>
         </div>
       </div>
@@ -276,44 +270,11 @@ export default function Profile() {
           letterSpacing: 1,
           fontWeight: 600
         }}>
-          {language === 'uz' ? 'Til' : 'Язык'}
+          {t.profile.language}
         </div>
 
-        <div style={{
-          padding: '16px',
-          display: 'flex',
-          gap: 8
-        }}>
-          {[
-            { code: 'ru', label: 'Русский', flag: '🇷🇺' },
-            { code: 'uz', label: "O'zbek", flag: '🇺🇿' }
-          ].map(lang => (
-            <button
-              key={lang.code}
-              onClick={() => setLanguage(lang.code)}
-              style={{
-                flex: 1,
-                padding: '12px 8px',
-                borderRadius: 12,
-                border: language === lang.code
-                  ? 'none'
-                  : '1px solid var(--color-border)',
-                background: language === lang.code
-                  ? 'var(--color-green-light)'
-                  : 'var(--color-surface-2)',
-                color: language === lang.code ? 'var(--color-bg)' : 'var(--color-text-muted)',
-                fontWeight: language === lang.code ? 700 : 400,
-                fontSize: 14,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6
-              }}
-            >
-              {lang.flag} {lang.label}
-            </button>
-          ))}
+        <div style={{ padding: '16px' }}>
+          <LanguageSwitcher variant="full" />
         </div>
       </div>
 
@@ -328,10 +289,7 @@ export default function Profile() {
         <button
           onClick={() => {
             if (confirm(
-              language === 'uz'
-                ? 'Chiqishni tasdiqlaysizmi?'
-                : 'Выйти из аккаунта?'
-            )) logout()
+t.profile.logout_confirm)) logout()
           }}
           style={{
             width: '100%',
@@ -349,7 +307,7 @@ export default function Profile() {
             fontFamily: 'Inter, sans-serif'
           }}
         >
-          🚪 {language === 'uz' ? 'Chiqish' : 'Выйти из аккаунта'}
+          🚪 {t.profile.logout_action}
         </button>
       </div>
 

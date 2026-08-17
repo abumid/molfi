@@ -36,6 +36,17 @@ const sum = (t) => (t / 100).toLocaleString('ru-RU') + ' сум'
 
 // ── подготовка ────────────────────────────────────────────
 
+// Тест ходит по HTTP, поэтому сервер должен быть поднят. Без этой проверки
+// падение выглядит как стектрейс ECONNREFUSED, из которого не очевидно,
+// что делать.
+try {
+  await fetch(API + '/models')
+} catch {
+  console.error(`Сервер не отвечает на ${API}`)
+  console.error('Запустите его в соседней вкладке:  cd server && npm run dev')
+  process.exit(1)
+}
+
 const admin = (await pool.query(`SELECT id, phone, role FROM users WHERE role='admin' LIMIT 1`)).rows[0]
 if (!admin) {
   console.error('Нет ни одного пользователя с role=admin. Назначьте админа и повторите:')
@@ -281,6 +292,29 @@ const walletNow = Number((await pool.query(
 )).rows[0].balance_tiyin)
 const spent = 5000000000 - walletNow
 ok(spent === -txSum, 'сумма транзакций сходится со списаниями', `потрачено ${sum(spent)}, транзакции ${sum(-txSum)}`)
+
+// ── смена пароля админом ──────────────────────────────────
+console.log('\n── админ меняет пароль пользователя ──')
+
+const hashBefore = (await pool.query(`SELECT password_hash FROM users WHERE id=$1`, [buyer.id])).rows[0]?.password_hash
+
+const tooShort = await call('PUT', `/admin/users/${buyer.id}`, { token: adminToken, body: { password: 'abc' } })
+ok(tooShort.success === false, 'короткий пароль отклонён', tooShort.error)
+
+const newPass = 'e2e-' + Date.now().toString(36)
+const changed = await call('PUT', `/admin/users/${buyer.id}`, { token: adminToken, body: { password: newPass } })
+ok(changed.success === true, 'PUT /admin/users/:id меняет пароль', changed.error)
+
+const hashAfter = (await pool.query(`SELECT password_hash FROM users WHERE id=$1`, [buyer.id])).rows[0]?.password_hash
+ok(hashAfter && hashAfter !== hashBefore, '  хеш в базе изменился')
+ok(hashAfter?.startsWith('$2'), '  и это bcrypt, а не открытый текст', hashAfter?.slice(0, 4))
+
+const login = await call('POST', '/auth/login', { body: { phone: buyerPhone, password: newPass } })
+ok(login.token !== undefined, '  новым паролем можно войти', login.error)
+
+const noPass = await call('PUT', `/admin/users/${buyer.id}`, { token: adminToken, body: { name: 'E2E Тест' } })
+const hashKept = (await pool.query(`SELECT password_hash FROM users WHERE id=$1`, [buyer.id])).rows[0]?.password_hash
+ok(noPass.success === true && hashKept === hashAfter, 'правка без пароля его не сбрасывает')
 
 // ── скрытие модели ────────────────────────────────────────
 console.log('\n── models_enabled ──')
