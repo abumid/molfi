@@ -10,6 +10,17 @@ const WEBAPP_URL = process.env.WEBAPP_URL || 'https://molfi.uz'
 const userLang = {}
 
 const t = {
+  en: {
+    instruction: '📋 Sign-up:\n\n1 Tap the button below and share your number\n2 Open the Molfi app\n3 Enter your phone number\n4 The confirmation code arrives here\n5 Enter the code and finish signing up',
+    choosePhone: 'Share your phone number:',
+    shareBtn: '📱 Share my number',
+    saved: 'Number saved. Sign-in codes will come here from now on.',
+    openApp: 'Open the Molfi app',
+    error: 'Something went wrong. Try again later.',
+    help: 'Molfi help:\n\n/start - choose a language and share your number\n/app - open the app\n\nIf codes do not arrive: tap /start and share your number again.',
+    code: (code) => `Your Molfi sign-in code: <b>${code}</b>\n\nThe code is valid for 10 minutes.`,
+    welcome_msg: (name) => name ? `Welcome to Molfi, ${name}!` : 'Welcome to Molfi!',
+  },
   uz: {
     instruction: '📋 Royxatdan otish:\n\n1 Quyidagi tugmani bosib telefon raqamingizni ulashing\n2 Molfi ilovasini oching\n3 Raqamingizni kiriting\n4 Tasdiqlash kodi shu yerga keladi\n5 Kodni kiriting va royxatdan oting',
     choosePhone: 'Telefon raqamingizni ulashing:',
@@ -19,7 +30,7 @@ const t = {
     error: 'Xatolik yuz berdi. Keyinroq urinib koring.',
     help: 'Molfi yordam:\n\n/start - tilni tanlash va raqamni ulash\n/app - ilovani ochish\n\nKodlar kelmasa: /start bosing va raqamingizni qayta ulashing.',
     code: (code) => `Molfi kirish kodingiz: <b>${code}</b>\n\nKod 10 daqiqa amal qiladi.`,
-    welcome_msg: (name) => `Molfi ga xush kelibsiz, ${name}!`,
+    welcome_msg: (name) => name ? `Molfi ga xush kelibsiz, ${name}!` : 'Molfi ga xush kelibsiz!',
   },
   ru: {
     instruction: '📋 Регистрация:\n\n1 Нажмите кнопку ниже и поделитесь номером\n2 Откройте приложение Molfi\n3 Введите свой номер телефона\n4 Код подтверждения придёт сюда\n5 Введите код и завершите регистрацию',
@@ -30,9 +41,11 @@ const t = {
     error: 'Ошибка. Попробуйте позже.',
     help: 'Помощь Molfi:\n\n/start - выбрать язык и поделиться номером\n/app - открыть приложение\n\nЕсли коды не приходят: нажмите /start и поделитесь номером заново.',
     code: (code) => `Ваш код подтверждения Molfi: <b>${code}</b>\n\nКод действителен 10 минут.`,
-    welcome_msg: (name) => `Добро пожаловать в Molfi, ${name}!`,
+    welcome_msg: (name) => name ? `Добро пожаловать в Molfi, ${name}!` : 'Добро пожаловать в Molfi!',
   }
 }
+
+export const BOT_LANGS = Object.keys(t)
 
 const getLang = async (telegramId) => {
   if (userLang[telegramId]) return userLang[telegramId]
@@ -45,7 +58,8 @@ const getLang = async (telegramId) => {
   } catch (e) {
     console.error('[bot] getLang error:', e.message)
   }
-  return 'ru'
+  // Английский — язык приложения по умолчанию, бот не должен расходиться с ним
+  return 'en'
 }
 
 const setLang = async (telegramId, lang) => {
@@ -63,9 +77,10 @@ const appKeyboard = (lang) => ({
 
 bot.onText(/^\/start/, async (msg) => {
   const chatId = msg.chat.id
-  await bot.sendMessage(chatId, 'Molfi\n\nTilni tanlang / Выберите язык:', {
+  await bot.sendMessage(chatId, 'Molfi\n\nChoose a language / Tilni tanlang / Выберите язык:', {
     reply_markup: {
       inline_keyboard: [[
+        { text: '🇬🇧 English', callback_data: 'lang_en' },
         { text: "🇺🇿 O'zbek", callback_data: 'lang_uz' },
         { text: '🇷🇺 Русский', callback_data: 'lang_ru' }
       ]]
@@ -86,8 +101,10 @@ bot.onText(/^\/help/, async (msg) => {
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id
   const data = query.data
-  if (data === 'lang_uz' || data === 'lang_ru') {
-    const lang = data === 'lang_uz' ? 'uz' : 'ru'
+  // Языки берём из самого словаря: добавили перевод — кнопка заработала,
+  // без правки условия здесь
+  if (data?.startsWith('lang_') && t[data.slice(5)]) {
+    const lang = data.slice(5)
     await setLang(query.from.id, lang)
     await bot.answerCallbackQuery(query.id)
     await bot.sendMessage(chatId, t[lang].instruction)

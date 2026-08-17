@@ -303,7 +303,7 @@ export default function Auth() {
       if (exists) {
         setScreen('password')
       } else {
-        const sms = await api.post('/auth/send-sms', { phone: apiPhone, telegram_id: telegramUser?.telegram_id })
+        const sms = await api.post('/auth/send-sms', { phone: apiPhone, telegram_id: telegramUser?.telegram_id, language })
         setSendVia(sms.sentVia || 'dev')
         setCode('')
         setScreen('register-code')
@@ -328,7 +328,7 @@ export default function Auth() {
 
   const handleResendRegisterCode = async () => {
     try {
-      const sms = await api.post('/auth/send-sms', { phone: apiPhone, telegram_id: telegramUser?.telegram_id })
+      const sms = await api.post('/auth/send-sms', { phone: apiPhone, telegram_id: telegramUser?.telegram_id, language })
       setSendVia(sms.sentVia || 'dev')
     } catch {}
   }
@@ -352,7 +352,7 @@ export default function Auth() {
     setError(''); setLoading(true)
     try {
       const { token, user } = await api.post('/auth/register', {
-        phone: apiPhone, code, password: newPassword, name,
+        phone: apiPhone, code, password: newPassword, name, language,
         telegram_id: telegramUser?.telegram_id,
         telegram_username: telegramUser?.telegram_username,
         first_name: telegramUser?.first_name,
@@ -369,7 +369,7 @@ export default function Auth() {
     if (!isPhoneComplete(phone)) { setError(t.auth.err_fill_phone); return }
     setError(''); setLoading(true)
     try {
-      await api.post('/auth/forgot-password', { phone: apiPhone })
+      await api.post('/auth/forgot-password', { phone: apiPhone, language })
       setCode('')
       setScreen('forgot-code')
     } catch (e) {
@@ -379,7 +379,7 @@ export default function Auth() {
   }
 
   const handleResendForgotCode = async () => {
-    try { await api.post('/auth/forgot-password', { phone: apiPhone }) } catch {}
+    try { await api.post('/auth/forgot-password', { phone: apiPhone, language }) } catch {}
   }
 
   const handleForgotCodeSubmit = () => {

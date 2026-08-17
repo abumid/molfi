@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useStore } from './store'
+import { useT } from './i18n'
 import BottomNav from './components/layout/BottomNav'
 import Onboarding from './pages/Onboarding'
 import Auth from './pages/Auth'
@@ -18,13 +19,15 @@ import Profile from './pages/Profile'
 const NAV_PATHS = ['/catalog', '/contracts', '/wallet', '/profile']
 
 function LoadingScreen() {
+  const language = useStore(s => s.language)
+  const t = useT(language)
   return (
     <div style={{
-      minHeight: '100vh', background: '#0a0f0a',
+      minHeight: '100vh', background: 'var(--color-bg)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#7a9a7a',
+      color: 'var(--color-text-muted)', fontFamily: 'Inter, sans-serif',
     }}>
-      Загрузка...
+      {t.common.loading}
     </div>
   )
 }

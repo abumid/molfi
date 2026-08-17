@@ -1,3 +1,14 @@
+// Текст кода на трёх языках. Раньше здесь был зашит русский, и клиент
+// с английским интерфейсом получал SMS по-русски.
+const CODE_TEXT = {
+  en: (code) => `Your Molfi sign-in code: ${code}`,
+  ru: (code) => `Ваш код подтверждения Molfi: ${code}`,
+  uz: (code) => `Molfi kirish kodingiz: ${code}`,
+}
+
+export const smsCodeText = (code, language = 'en') =>
+  (CODE_TEXT[language] || CODE_TEXT.en)(code)
+
 let eskizToken = null
 
 const getEskizToken = async () => {

@@ -16,10 +16,32 @@ import bot from './services/telegramBot.js'
 
 const app = express()
 
-bot.setMyCommands([
-  { command: 'start', description: 'Запустить Molfi' },
-  { command: 'app', description: 'Открыть приложение' },
-  { command: 'help', description: 'Помощь' },
+// Меню команд Telegram задаётся отдельно для каждого языка: клиент
+// показывает то, что соответствует языку его аккаунта. Раньше здесь был
+// только русский, и англоязычный пользователь видел русские подписи.
+const BOT_COMMANDS = {
+  en: [
+    { command: 'start', description: 'Start Molfi' },
+    { command: 'app', description: 'Open the app' },
+    { command: 'help', description: 'Help' },
+  ],
+  ru: [
+    { command: 'start', description: 'Запустить Molfi' },
+    { command: 'app', description: 'Открыть приложение' },
+    { command: 'help', description: 'Помощь' },
+  ],
+  uz: [
+    { command: 'start', description: 'Molfi ni ishga tushirish' },
+    { command: 'app', description: 'Ilovani ochish' },
+    { command: 'help', description: 'Yordam' },
+  ],
+}
+
+Promise.all([
+  // Без language_code — то, что увидят все остальные локали
+  bot.setMyCommands(BOT_COMMANDS.en),
+  ...Object.entries(BOT_COMMANDS).map(([lang, cmds]) =>
+    bot.setMyCommands(cmds, { language_code: lang })),
 ]).then(() => console.log('🤖 Telegram bot initialized'))
   .catch(e => console.error('Telegram bot setup error:', e.message))
 

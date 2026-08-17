@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken'
 import { pool } from '../db/pool.js'
 import { ok, fail, asyncHandler } from '../utils/response.js'
 import { requireAuth } from '../middleware/auth.js'
-import { sendSms } from '../utils/sms.js'
+import { sendSms, smsCodeText } from '../utils/sms.js'
 import { sendVerificationCode, sendWelcome } from '../services/telegramBot.js'
 
 const router = Router()
@@ -27,7 +27,20 @@ const findUserByPhone = async (phone, columns = '*') => {
   return rows[0] || null
 }
 
-const issueSmsCode = async (phone, telegramId) => {
+const LANGS = ['en', 'ru', 'uz']
+
+/**
+ * Язык уведомления. У существующего клиента берём сохранённый, иначе тот,
+ * что прислало приложение. При регистрации в базе его ещё нет, а SMS
+ * уходит уже тогда — поэтому одного только поля в users мало.
+ */
+const notifyLang = async (phone, requested) => {
+  const user = await findUserByPhone(phone, 'language')
+  const lang = user?.language || requested
+  return LANGS.includes(lang) ? lang : 'en'
+}
+
+const issueSmsCode = async (phone, telegramId, language = 'en') => {
   const code = generateCode()
   const expires = new Date(Date.now() + CODE_TTL_MS)
   await pool.query(`DELETE FROM sms_codes WHERE phone=$1`, [phone])
@@ -45,7 +58,7 @@ const issueSmsCode = async (phone, telegramId) => {
     if (sent) sentVia = 'telegram'
   }
   if (sentVia !== 'telegram' && process.env.ESKIZ_EMAIL && process.env.ESKIZ_PASSWORD) {
-    await sendSms(phone, `Ваш код подтверждения Molfi: ${code}`)
+    await sendSms(phone, smsCodeText(code, language))
     sentVia = 'sms'
   }
   if (sentVia === 'none' && process.env.NODE_ENV === 'development') sentVia = 'dev'
@@ -72,9 +85,9 @@ router.post('/check-phone', asyncHandler(async (req, res) => {
 }))
 
 router.post('/send-sms', asyncHandler(async (req, res) => {
-  const { phone, telegram_id } = req.body
+  const { phone, telegram_id, language } = req.body
   if (!phone) return fail(res, 'Phone required')
-  const { code, sentVia } = await issueSmsCode(phone, telegram_id)
+  const { code, sentVia } = await issueSmsCode(phone, telegram_id, await notifyLang(phone, language))
   ok(res, { sentVia, ...(process.env.NODE_ENV === 'development' ? { code } : {}) })
 }))
 
@@ -91,9 +104,13 @@ router.post('/verify-sms', asyncHandler(async (req, res) => {
 }))
 
 router.post('/register', asyncHandler(async (req, res) => {
-  const { phone, code, password, name, telegram_id, telegram_username, first_name, last_name } = req.body
+  const { phone, code, password, name, telegram_id, telegram_username, first_name, last_name, language } = req.body
   if (!phone || !code || !password) return fail(res, 'Phone, code and password required')
   if (password.length < 6) return fail(res, 'Password must be at least 6 characters')
+
+  // Язык интерфейса запоминаем при регистрации: по нему пойдут SMS
+  // и сообщения бота, и человек не должен настраивать его дважды
+  const lang = LANGS.includes(language) ? language : 'en'
 
   const codeRow = (await findValidCode(phone, code)).rows[0]
   if (!codeRow) return fail(res, 'Invalid or expired code')
@@ -112,14 +129,15 @@ router.post('/register', asyncHandler(async (req, res) => {
            telegram_id=COALESCE($5, telegram_id),
            telegram_username=COALESCE($6, telegram_username),
            first_name=COALESCE($7, first_name),
-           last_name=COALESCE($8, last_name)
+           last_name=COALESCE($8, last_name),
+           language=COALESCE(language, $9)
          WHERE id=$1 RETURNING *`,
-        [existing.id, name || null, hash, ref, telegram_id || null, telegram_username || null, first_name || null, last_name || null]
+        [existing.id, name || null, hash, ref, telegram_id || null, telegram_username || null, first_name || null, last_name || null, lang]
       )).rows[0]
     : (await pool.query(
-        `INSERT INTO users (phone, name, password_hash, referral_code, telegram_id, telegram_username, first_name, last_name)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [phone, name || null, hash, ref, telegram_id || null, telegram_username || null, first_name || null, last_name || null]
+        `INSERT INTO users (phone, name, password_hash, referral_code, telegram_id, telegram_username, first_name, last_name, language)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        [phone, name || null, hash, ref, telegram_id || null, telegram_username || null, first_name || null, last_name || null, lang]
       )).rows[0]
 
   await pool.query(
@@ -127,8 +145,10 @@ router.post('/register', asyncHandler(async (req, res) => {
     [user.id]
   )
 
+  // Имени может не быть — тогда бот поздоровается без обращения,
+  // а не назовёт человека русским словом «друг» в английском интерфейсе
   if (telegram_id) {
-    await sendWelcome(telegram_id, name || first_name || 'друг')
+    await sendWelcome(telegram_id, name || first_name || null)
   }
 
   ok(res, { token: issueToken(user), user: { id: user.id, phone: user.phone, name: user.name, role: user.role } })
@@ -146,11 +166,11 @@ router.post('/login', asyncHandler(async (req, res) => {
 }))
 
 router.post('/forgot-password', asyncHandler(async (req, res) => {
-  const { phone } = req.body
+  const { phone, language } = req.body
   if (!phone) return fail(res, 'Phone required')
   const user = await findUserByPhone(phone, 'id')
   if (!user) return fail(res, 'User not found', 404)
-  const { code } = await issueSmsCode(phone)
+  const { code } = await issueSmsCode(phone, null, await notifyLang(phone, language))
   ok(res, process.env.NODE_ENV === 'development' ? { code } : {})
 }))
 
