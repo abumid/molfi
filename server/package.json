@@ -11,6 +11,7 @@
     "smoke": "node test/smoke.mjs",
     "e2e": "node test/e2e.mjs",
     "jobs": "node test/jobs.mjs",
+    "boarding": "node test/boarding.mjs",
     "job:boarding": "node src/jobs/accrueBoarding.js",
     "job:overdue": "node src/jobs/markOverdue.js"
   },

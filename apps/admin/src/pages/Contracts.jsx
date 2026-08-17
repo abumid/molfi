@@ -40,6 +40,9 @@ export default function Contracts() {
   const [newStatus, setNewStatus] = useState('active')
   const [saving, setSaving] = useState(false)
 
+  const [boarding, setBoarding] = useState(null)
+  const [boardingForm, setBoardingForm] = useState({ amount_sum: '', from_wallet: true })
+
   const [creating, setCreating] = useState(false)
   const [users, setUsers] = useState([])
   const [offers, setOffers] = useState([])
@@ -92,6 +95,33 @@ export default function Contracts() {
       const msg = String(e.message)
       alert(msg.includes('animal_already_sold') ? t('contracts.animalTaken')
         : msg.includes('insufficient_balance') ? t('contracts.notEnough')
+        : t('common.error') + ': ' + msg)
+    }
+    setSaving(false)
+  }
+
+  const outstandingOf = (c) => Math.max(0,
+    (Number(c.boarding_accrued_tiyin) || 0) - (Number(c.boarding_paid_tiyin) || 0))
+
+  const openBoarding = (c) => {
+    setBoarding(c)
+    // По умолчанию гасим весь долг: чаще всего платят именно так
+    setBoardingForm({ amount_sum: String(Math.floor(outstandingOf(c) / 100)), from_wallet: true })
+  }
+
+  const payBoarding = async () => {
+    setSaving(true)
+    try {
+      await api.post(`/admin/contracts/${boarding.id}/boarding`, {
+        amount_tiyin: Math.round(Number(boardingForm.amount_sum) * 100),
+        from_wallet: boardingForm.from_wallet,
+      })
+      setBoarding(null)
+      load()
+    } catch (e) {
+      const msg = String(e.message)
+      alert(msg.includes('insufficient_balance') ? t('contracts.notEnough')
+        : msg.includes('nothing_to_pay') ? t('contracts.nothingToPay')
         : t('common.error') + ': ' + msg)
     }
     setSaving(false)
@@ -237,12 +267,19 @@ export default function Contracts() {
                       </span>
                     </td>
                     <td>
-                      <button
-                        className="btn btn-sm btn-secondary"
-                        onClick={() => { setEditing(c); setNewStatus(c.status) }}
-                      >
-                        {t('contracts.changeStatus')}
-                      </button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {outstandingOf(c) > 0 && (
+                          <button className="btn btn-sm btn-primary" onClick={() => openBoarding(c)}>
+                            {t('contracts.boardingPay')}
+                          </button>
+                        )}
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          onClick={() => { setEditing(c); setNewStatus(c.status) }}
+                        >
+                          {t('contracts.changeStatus')}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -351,6 +388,73 @@ export default function Contracts() {
                 {saving ? t('common.saving') : t('common.confirm')}
               </button>
               <button className="btn btn-secondary" onClick={() => setCreating(false)}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {boarding && (
+        <div className="modal-overlay" onClick={() => setBoarding(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">
+              {t('contracts.boardingTitle')} — #{boarding.id}
+            </div>
+
+            <div style={{
+              background: 'var(--surface-2, #171b26)', borderRadius: 10,
+              padding: 12, fontSize: 13, marginBottom: 14,
+            }}>
+              <Row label={t('contracts.user')} value={boarding.user_name || boarding.user_phone} />
+              <Row label={t('contracts.boardingAccrued')}
+                   value={formatSum(boarding.boarding_accrued_tiyin, language)} />
+              <Row label={t('contracts.boardingOutstanding')}
+                   value={formatSum(outstandingOf(boarding), language)}
+                   color="var(--gold)" />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{t('contracts.boardingAmount')}</label>
+              <input
+                className="form-input" type="number"
+                value={boardingForm.amount_sum}
+                onChange={e => setBoardingForm(f => ({ ...f, amount_sum: e.target.value }))}
+              />
+              <button
+                className="btn btn-sm btn-secondary" style={{ marginTop: 6 }}
+                onClick={() => setBoardingForm(f => ({
+                  ...f, amount_sum: String(Math.floor(outstandingOf(boarding) / 100)),
+                }))}
+              >
+                {t('contracts.boardingFull')}
+              </button>
+            </div>
+
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14 }}>
+                <input
+                  type="checkbox"
+                  checked={boardingForm.from_wallet}
+                  onChange={e => setBoardingForm(f => ({ ...f, from_wallet: e.target.checked }))}
+                  style={{ width: 16, height: 16, accentColor: 'var(--accent)' }}
+                />
+                {t('contracts.fromWallet')}
+              </label>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+                {t('contracts.fromWalletHint')}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button
+                className="btn btn-primary" style={{ flex: 1 }}
+                disabled={saving || !Number(boardingForm.amount_sum)}
+                onClick={payBoarding}
+              >
+                {saving ? t('common.saving') : t('common.confirm')}
+              </button>
+              <button className="btn btn-secondary" onClick={() => setBoarding(null)}>
                 {t('common.cancel')}
               </button>
             </div>

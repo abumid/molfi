@@ -11,7 +11,7 @@ const INCOME_TYPES = ['deposit', 'payout', 'topup']
 
 const ALL_TYPES = [
   'deposit', 'withdrawal', 'topup', 'payout',
-  'contract_purchase', 'installment_payment',
+  'contract_purchase', 'installment_payment', 'boarding_payment',
 ]
 
 const EMPTY = { user_id: '', type: 'deposit', amount_sum: '', description: '' }

@@ -287,6 +287,73 @@ router.post('/payments/boarding', requireAuth, asyncHandler(async (req, res) => 
   }
 }))
 
+/**
+ * Оплата содержания, записанная админом.
+ *
+ * from_wallet = true  — клиент платит с баланса на платформе, как из приложения
+ * from_wallet = false — деньги пришли наличными или переводом мимо платформы:
+ *                       долг гасим, кошелёк не трогаем, иначе баланс покажет
+ *                       средства, которых у клиента здесь нет
+ */
+router.post('/admin/contracts/:id/boarding', requireAdmin, asyncHandler(async (req, res) => {
+  const { amount_tiyin, from_wallet = false } = req.body
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const contract = (await client.query(
+      `SELECT * FROM contracts WHERE id = $1 FOR UPDATE`, [req.params.id]
+    )).rows[0]
+    if (!contract) { await client.query('ROLLBACK'); return fail(res, 'not_found', 404) }
+
+    const outstanding = boardingOutstanding(contract)
+    if (outstanding <= 0) { await client.query('ROLLBACK'); return fail(res, 'nothing_to_pay') }
+
+    // Частичная оплата разрешена: долг за год может быть неподъёмным разом
+    const amount = amount_tiyin ? Math.min(Number(amount_tiyin), outstanding) : outstanding
+    if (amount <= 0) { await client.query('ROLLBACK'); return fail(res, 'invalid_amount') }
+
+    if (from_wallet) {
+      const wallet = (await client.query(
+        `SELECT balance_tiyin FROM wallet_balances WHERE user_id = $1 FOR UPDATE`,
+        [contract.user_id]
+      )).rows[0]
+      if (!wallet || Number(wallet.balance_tiyin) < amount) {
+        await client.query('ROLLBACK')
+        return fail(res, 'insufficient_balance')
+      }
+      await client.query(
+        `UPDATE wallet_balances SET balance_tiyin = balance_tiyin - $1, updated_at = NOW() WHERE user_id = $2`,
+        [amount, contract.user_id]
+      )
+      await client.query(
+        `INSERT INTO transactions (user_id, contract_id, type, amount_tiyin, description)
+         VALUES ($1,$2,'boarding_payment',$3,$4)`,
+        [contract.user_id, contract.id, -amount, `Boarding fee for contract #${contract.id}`]
+      )
+    }
+
+    const updated = (await client.query(
+      `UPDATE contracts SET boarding_paid_tiyin = boarding_paid_tiyin + $2 WHERE id = $1 RETURNING *`,
+      [req.params.id, amount]
+    )).rows[0]
+
+    await client.query('COMMIT')
+    ok(res, {
+      contract: updated,
+      paid_tiyin: amount,
+      outstanding_tiyin: boardingOutstanding(updated),
+      from_wallet: !!from_wallet,
+    })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    throw e
+  } finally {
+    client.release()
+  }
+}))
+
 router.get('/admin/payments', requireAdmin, asyncHandler(async (req, res) => {
   const { status, contract_id } = req.query
   const payments = (await pool.query(
