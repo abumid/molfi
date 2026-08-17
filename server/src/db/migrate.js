@@ -407,7 +407,8 @@ const migrate = async () => {
       ('late_fee_bp',                '0',      'Пеня за просрочку платежа, б.п. в день'),
       ('min_investment_tiyin',       '100000000', 'Минимальный вход в fixed_income, тийин (1 000 000 сум)'),
       ('overdue_grace_days',         '5',      'Сколько дней после due_date до статуса overdue'),
-      ('default_after_missed',       '3',      'Сколько пропущенных платежей до статуса defaulted')
+      ('default_after_missed',       '3',      'Сколько пропущенных платежей до статуса defaulted'),
+      ('models_enabled', 'ownership,fixed_income', 'Какие модели открыты. Через запятую из ownership,installment,fixed_income')
     ON CONFLICT (key) DO NOTHING;
   `)
 

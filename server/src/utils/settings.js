@@ -18,7 +18,10 @@ const FALLBACK = {
   min_investment_tiyin: '100000000',
   overdue_grace_days: '5',
   default_after_missed: '3',
+  models_enabled: 'ownership,fixed_income',
 }
+
+export const ALL_MODELS = ['ownership', 'installment', 'fixed_income']
 
 let cache = null
 let loadedAt = 0
@@ -71,3 +74,16 @@ export const invalidateSettings = () => {
 
 /** Комиссия платформы в базисных пунктах. Самая частая настройка. */
 export const platformFeeBp = () => getSettingInt('platform_fee_bp')
+
+/**
+ * Какие модели сейчас открыты. Держим в settings, а не в коде, чтобы
+ * включить или спрятать модель можно было без деплоя. Мусор в значении
+ * игнорируем, но пустой список не отдаём — иначе витрина умрёт молча.
+ */
+export const enabledModels = async () => {
+  const raw = await getSetting('models_enabled')
+  const list = String(raw || '').split(',').map(s => s.trim()).filter(m => ALL_MODELS.includes(m))
+  return list.length ? list : [...ALL_MODELS]
+}
+
+export const isModelEnabled = async (model) => (await enabledModels()).includes(model)

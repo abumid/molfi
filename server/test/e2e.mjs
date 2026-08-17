@@ -88,7 +88,20 @@ if (!animal) { console.error('Нет свободного животного с�
 
 const farm = (await pool.query(`SELECT id FROM farms ORDER BY id LIMIT 1`)).rows[0]
 
-console.log(`админ #${admin.id}, покупатель #${buyer.id}, животное #${animal.id} «${animal.name}»\n`)
+console.log(`админ #${admin.id}, покупатель #${buyer.id}, животное #${animal.id} «${animal.name}»`)
+
+// Рассрочка сейчас спрятана через settings.models_enabled. Код при этом
+// живой, и оставлять его без проверок нельзя — спящий непроверяемый код
+// протухает. На время прогона включаем все модели, в конце возвращаем.
+const savedModels = (await pool.query(`SELECT value FROM settings WHERE key='models_enabled'`)).rows[0]?.value
+  ?? 'ownership,fixed_income'
+await call('PUT', '/admin/settings', { token: adminToken, body: { models_enabled: 'ownership,installment,fixed_income' } })
+console.log(`модели на время теста: все три (в базе ${savedModels})\n`)
+
+const restoreModels = async () => {
+  await call('PUT', '/admin/settings', { token: adminToken, body: { models_enabled: savedModels } })
+}
+process.on('exit', () => { /* восстановление ниже, синхронно уже нельзя */ })
 
 // ── products ──────────────────────────────────────────────
 console.log('── products ──')
@@ -110,6 +123,17 @@ const pInst = await call('POST', '/admin/products', {
   },
 })
 ok(pInst.success === true, 'POST /admin/products — installment', pInst.error)
+
+// Запасной оффер рассрочки: его никто не купит, он понадобится в самом
+// конце, чтобы проверить блокировку по модели на активном оффере.
+// На раскупленном сработает более ранняя проверка статуса.
+const pInstFree = await call('POST', '/admin/products', {
+  token: adminToken,
+  body: {
+    model_type: 'installment', farm_id: farm?.id, title_en: 'E2E installment spare',
+    price_tiyin: 60000000, term_months: 6, meat_weight_g: 25000, status: 'active',
+  },
+})
 
 const pFix = await call('POST', '/admin/products', {
   token: adminToken,
@@ -257,6 +281,50 @@ const walletNow = Number((await pool.query(
 )).rows[0].balance_tiyin)
 const spent = 5000000000 - walletNow
 ok(spent === -txSum, 'сумма транзакций сходится со списаниями', `потрачено ${sum(spent)}, транзакции ${sum(-txSum)}`)
+
+// ── скрытие модели ────────────────────────────────────────
+console.log('\n── models_enabled ──')
+
+const models = await call('GET', '/models')
+ok(models.models?.includes('installment'), 'GET /models отдаёт включённые модели', models.models?.join(', '))
+
+await call('PUT', '/admin/settings', { token: adminToken, body: { models_enabled: 'ownership,fixed_income' } })
+
+const hidden = await call('GET', '/models')
+ok(!hidden.models?.includes('installment'), 'после выключения installment пропал из /models', hidden.models?.join(', '))
+
+const listHidden = await call('GET', '/products')
+ok(!listHidden.products?.some(p => p.model_type === 'installment'), 'скрытая модель не попадает в витрину')
+
+const askHidden = await call('GET', '/products?model=installment')
+ok(askHidden.products?.length === 0, 'прямой фильтр по скрытой модели отдаёт пусто')
+
+const directHidden = await call('GET', `/products/${pInst.product.id}`)
+ok(directHidden.status === 404, 'прямая ссылка на скрытый оффер — 404', String(directHidden.status))
+
+const buyHidden = await call('POST', '/contracts', { token: buyerToken, body: { product_id: pInstFree.product.id } })
+ok(buyHidden.error === 'model_disabled', 'оформить скрытую модель нельзя', buyHidden.error)
+
+const createHidden = await call('POST', '/admin/products', {
+  token: adminToken,
+  body: { model_type: 'installment', title_en: 'E2E blocked', price_tiyin: 1, term_months: 3, meat_weight_g: 1, status: 'active' },
+})
+ok(createHidden.success === false, 'создать оффер скрытой модели нельзя', createHidden.error)
+
+const badSetting = await call('PUT', '/admin/settings', { token: adminToken, body: { models_enabled: 'ownership,horses' } })
+ok(badSetting.success === false, 'мусор в models_enabled отклонён', badSetting.error)
+
+const badFee = await call('PUT', '/admin/settings', { token: adminToken, body: { platform_fee_bp: 20000 } })
+ok(badFee.success === false, 'комиссия выше 100% отклонена', badFee.error)
+
+// Существующие договоры по скрытой модели продолжают жить
+const stillMine = await call('GET', '/contracts', { token: buyerToken })
+ok(stillMine.contracts?.some(c => c.model_type === 'installment'),
+   'уже оформленный договор рассрочки остаётся доступен владельцу')
+
+await restoreModels()
+const restored = (await pool.query(`SELECT value FROM settings WHERE key='models_enabled'`)).rows[0]?.value
+ok(restored === savedModels, 'настройка возвращена как была', restored)
 
 // ── итог ──────────────────────────────────────────────────
 console.log(`\n${passed} ok, ${failed} failed`)

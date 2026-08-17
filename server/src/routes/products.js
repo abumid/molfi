@@ -2,10 +2,9 @@ import { Router } from 'express'
 import { pool } from '../db/pool.js'
 import { ok, fail, asyncHandler } from '../utils/response.js'
 import { requireAdmin } from '../middleware/auth.js'
+import { ALL_MODELS as MODELS, enabledModels } from '../utils/settings.js'
 
 const router = Router()
-
-const MODELS = ['ownership', 'installment', 'fixed_income']
 
 // Животное подтягиваем LEFT JOIN'ом: у installment и fixed_income
 // animal_id пустой, INNER выкинул бы их из выдачи целиком.
@@ -40,16 +39,27 @@ const validate = (body) => {
 
 // ── публичная витрина ─────────────────────────────────────
 
+// Клиенту нужно знать, какие вкладки рисовать, до запроса самих офферов
+router.get('/models', asyncHandler(async (req, res) => {
+  ok(res, { models: await enabledModels() })
+}))
+
 router.get('/products', asyncHandler(async (req, res) => {
   const { model } = req.query
   if (model && !MODELS.includes(model)) return fail(res, 'unknown_model')
 
+  // Спрятанные модели не должны утекать в витрину, даже если оффер
+  // остался в статусе active с прошлых времён
+  const allowed = await enabledModels()
+  if (model && !allowed.includes(model)) return ok(res, { products: [] })
+
   const products = (await pool.query(
     `${SELECT_PRODUCT}
      WHERE p.status = 'active'
+       AND p.model_type = ANY($2)
        AND ($1::text IS NULL OR p.model_type = $1)
      ORDER BY p.created_at DESC`,
-    [model || null]
+    [model || null, allowed]
   )).rows
 
   ok(res, { products })
@@ -58,6 +68,9 @@ router.get('/products', asyncHandler(async (req, res) => {
 router.get('/products/:id', asyncHandler(async (req, res) => {
   const product = (await pool.query(`${SELECT_PRODUCT} WHERE p.id = $1`, [req.params.id])).rows[0]
   if (!product) return fail(res, 'not_found', 404)
+
+  // Прямая ссылка на оффер спрятанной модели тоже не должна открываться
+  if (!(await enabledModels()).includes(product.model_type)) return fail(res, 'not_found', 404)
 
   // История веса нужна только там, где покупают конкретное животное
   const weights = product.animal_id
@@ -88,6 +101,10 @@ router.get('/admin/products', requireAdmin, asyncHandler(async (req, res) => {
 router.post('/admin/products', requireAdmin, asyncHandler(async (req, res) => {
   const err = validate(req.body)
   if (err) return fail(res, err)
+
+  const allowed = await enabledModels()
+  if (!allowed.includes(req.body.model_type))
+    return fail(res, `model ${req.body.model_type} is disabled (settings.models_enabled)`)
 
   const {
     model_type, animal_id, farm_id,

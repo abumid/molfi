@@ -6,6 +6,7 @@ import animalsRoutes from './routes/animals.js'
 import productsRoutes from './routes/products.js'
 import contractsRoutes from './routes/contracts.js'
 import paymentsRoutes from './routes/payments.js'
+import settingsRoutes from './routes/settings.js'
 import walletRoutes from './routes/wallet.js'
 import adminRoutes from './routes/admin.js'
 import profileRoutes from './routes/profile.js'
@@ -45,6 +46,7 @@ app.use('/api', animalsRoutes)
 app.use('/api', productsRoutes)
 app.use('/api', contractsRoutes)
 app.use('/api', paymentsRoutes)
+app.use('/api', settingsRoutes)
 app.use('/api/wallet', walletRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/profile', profileRoutes)

@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { pool } from '../db/pool.js'
 import { ok, fail, asyncHandler } from '../utils/response.js'
 import { requireAuth, requireAdmin } from '../middleware/auth.js'
-import { getSettingInt } from '../utils/settings.js'
+import { getSettingInt, enabledModels } from '../utils/settings.js'
 import { buildSchedule, installmentSummary, fixedIncomeMaturity, ownershipPayout } from '../utils/calculations.js'
 
 const router = Router()
@@ -68,6 +68,12 @@ router.post('/contracts', requireAuth, asyncHandler(async (req, res) => {
     )).rows[0]
     if (!product) { await client.query('ROLLBACK'); return fail(res, 'product_not_found', 404) }
     if (product.status !== 'active') { await client.query('ROLLBACK'); return fail(res, 'product_not_active') }
+
+    // Спрятанную модель нельзя оформить, даже зная product_id напрямую
+    if (!(await enabledModels()).includes(product.model_type)) {
+      await client.query('ROLLBACK')
+      return fail(res, 'model_disabled')
+    }
     if (product.slots_taken >= product.slots_total) {
       await client.query('ROLLBACK')
       return fail(res, 'no_slots_left')
