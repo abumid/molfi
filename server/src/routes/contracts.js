@@ -43,138 +43,167 @@ const isoMonths = (date, months) => addMonths(date, Number(months || 0)).toISOSt
 
 // ── оформление ────────────────────────────────────────────
 
+/**
+ * Создание договора. Вынесено из роута, потому что оформлять могут двое:
+ * клиент сам через приложение и админ за клиента, который пришёл на ферму.
+ * Логика обязана быть одна — иначе списания и проверки разъедутся.
+ *
+ * Транзакцией управляет вызывающий: ему может понадобиться откатить
+ * и то, что он делал до нас.
+ */
+const createContract = async (client, userId, { product_id, exit_type }) => {
+  // Блокируем оффер: без этого два параллельных запроса разберут
+  // последний слот дважды и slots_taken уедет выше slots_total.
+  const product = (await client.query(
+    `SELECT * FROM products WHERE id = $1 FOR UPDATE`, [product_id]
+  )).rows[0]
+  if (!product) return { error: 'product_not_found', status: 404 }
+  if (product.status !== 'active') return { error: 'product_not_active' }
+
+  // Спрятанную модель нельзя оформить, даже зная product_id напрямую
+  if (!(await enabledModels()).includes(product.model_type)) return { error: 'model_disabled' }
+  if (product.slots_taken >= product.slots_total) return { error: 'no_slots_left' }
+
+  const principal = Number(product.price_tiyin)
+  if (!principal) return { error: 'product_has_no_price' }
+
+  const { purchaseFeeBp } = await feeRates()
+  const cost = upfrontCost(product, purchaseFeeBp)
+  const fee = product.model_type === 'installment' ? 0 : purchaseFee(principal, purchaseFeeBp)
+
+  if (cost > 0) {
+    const wallet = (await client.query(
+      `SELECT balance_tiyin FROM wallet_balances WHERE user_id = $1 FOR UPDATE`, [userId]
+    )).rows[0]
+    if (!wallet || Number(wallet.balance_tiyin) < cost) return { error: 'insufficient_balance' }
+    await client.query(
+      `UPDATE wallet_balances SET balance_tiyin = balance_tiyin - $1, updated_at = NOW() WHERE user_id = $2`,
+      [cost, userId]
+    )
+  }
+
+  // Животное закрепляется сразу у обеих моделей с животным.
+  // У installment оно назначается позже, при отгрузке.
+  const animalId = product.model_type === 'installment' ? null : product.animal_id
+
+  // Абонплату фиксируем в договоре: подняли тариф — старые договоры
+  // должны остаться на своей цене
+  const boardingFee = product.model_type === 'installment'
+    ? null
+    : (Number(product.boarding_fee_monthly_tiyin) || await boardingFeeMonthly())
+
+  const contract = (await client.query(
+    `INSERT INTO contracts
+       (user_id, product_id, animal_id, model_type, status,
+        principal_tiyin, paid_tiyin, term_months, exit_type, matures_at,
+        boarding_fee_monthly_tiyin, boarding_accrued_until)
+     VALUES ($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10,CURRENT_DATE)
+     RETURNING *`,
+    [
+      userId, product.id, animalId, product.model_type,
+      principal, cost, product.term_months || null,
+      product.model_type === 'investment' ? 'sale'
+        : product.model_type === 'ownership' ? (exit_type || 'slaughter')
+        : null,
+      product.term_months ? isoMonths(new Date(), product.term_months) : null,
+      boardingFee,
+    ]
+  )).rows[0]
+
+  const schedule = []
+  if (product.model_type === 'installment') {
+    for (const p of buildSchedule(principal, product.term_months)) {
+      schedule.push((await client.query(
+        `INSERT INTO payment_schedule (contract_id, seq, due_date, amount_tiyin)
+         VALUES ($1,$2,$3,$4) RETURNING *`,
+        [contract.id, p.seq, p.due_date, p.amount_tiyin]
+      )).rows[0])
+    }
+  }
+
+  if (animalId) {
+    await client.query(`UPDATE animals SET status = 'owned' WHERE id = $1`, [animalId])
+  }
+
+  await client.query(
+    `UPDATE products SET slots_taken = slots_taken + 1,
+       status = CASE WHEN slots_taken + 1 >= slots_total THEN 'sold_out' ELSE status END
+     WHERE id = $1`,
+    [product.id]
+  )
+
+  if (cost > 0) {
+    await client.query(
+      `INSERT INTO transactions (user_id, contract_id, type, amount_tiyin, description)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [userId, contract.id, 'contract_purchase', -cost,
+       `Contract #${contract.id} opened (${product.model_type})`
+         + (fee ? ` incl. purchase fee ${fee}` : '')]
+    )
+  }
+
+  return { contract, schedule }
+}
+
+/** Гонка за животное превращается в понятный ответ, а не в 500. */
+const asRaceError = (e) =>
+  e.code === '23505' && e.constraint === 'contracts_one_owner_per_animal'
+
 router.post('/contracts', requireAuth, asyncHandler(async (req, res) => {
-  const { product_id, amount_tiyin, exit_type } = req.body
+  const { product_id, exit_type } = req.body
   if (!product_id) return fail(res, 'product_id required')
   if (exit_type && !['sale', 'slaughter'].includes(exit_type)) return fail(res, 'invalid_exit_type')
 
   const client = await pool.connect()
-
   try {
     await client.query('BEGIN')
-
-    // Блокируем оффер: без этого два параллельных запроса разберут
-    // последний слот дважды и slots_taken уедет выше slots_total.
-    const product = (await client.query(
-      `SELECT * FROM products WHERE id = $1 FOR UPDATE`,
-      [product_id]
-    )).rows[0]
-    if (!product) { await client.query('ROLLBACK'); return fail(res, 'product_not_found', 404) }
-    if (product.status !== 'active') { await client.query('ROLLBACK'); return fail(res, 'product_not_active') }
-
-    // Спрятанную модель нельзя оформить, даже зная product_id напрямую
-    if (!(await enabledModels()).includes(product.model_type)) {
+    const result = await createContract(client, req.user.id, { product_id, exit_type })
+    if (result.error) {
       await client.query('ROLLBACK')
-      return fail(res, 'model_disabled')
+      return fail(res, result.error, result.status || 400)
     }
-    if (product.slots_taken >= product.slots_total) {
-      await client.query('ROLLBACK')
-      return fail(res, 'no_slots_left')
-    }
-
-    // Сумма договора: цена животного. Модели со ставкой у нас больше нет —
-    // животноводство не даёт гарантированного процента.
-    const principal = Number(product.price_tiyin)
-    if (!principal) { await client.query('ROLLBACK'); return fail(res, 'product has no price') }
-
-    const { purchaseFeeBp } = await feeRates()
-    const cost = upfrontCost(product, purchaseFeeBp)
-    const fee = product.model_type === 'installment' ? 0 : purchaseFee(principal, purchaseFeeBp)
-
-    if (cost > 0) {
-      const wallet = (await client.query(
-        `SELECT balance_tiyin FROM wallet_balances WHERE user_id = $1 FOR UPDATE`,
-        [req.user.id]
-      )).rows[0]
-      if (!wallet || Number(wallet.balance_tiyin) < cost) {
-        await client.query('ROLLBACK')
-        return fail(res, 'insufficient_balance')
-      }
-      await client.query(
-        `UPDATE wallet_balances SET balance_tiyin = balance_tiyin - $1, updated_at = NOW() WHERE user_id = $2`,
-        [cost, req.user.id]
-      )
-    }
-
-    // Животное закрепляется сразу у обеих моделей с животным.
-    // У installment оно назначается позже, при отгрузке.
-    const animalId = product.model_type === 'installment' ? null : product.animal_id
-
-    // Абонплату фиксируем в договоре: подняли тариф — старые договоры
-    // должны остаться на своей цене
-    const boardingFee = product.model_type === 'installment'
-      ? null
-      : (Number(product.boarding_fee_monthly_tiyin) || await boardingFeeMonthly())
-
-    const contract = (await client.query(
-      `INSERT INTO contracts
-         (user_id, product_id, animal_id, model_type, status,
-          principal_tiyin, paid_tiyin, term_months, exit_type, matures_at,
-          boarding_fee_monthly_tiyin, boarding_accrued_until)
-       VALUES ($1,$2,$3,$4,'active',$5,$6,$7,$8,$9,$10,CURRENT_DATE)
-       RETURNING *`,
-      [
-        req.user.id, product.id, animalId, product.model_type,
-        principal, cost, product.term_months || null,
-        product.model_type === 'investment' ? 'sale'
-          : product.model_type === 'ownership' ? (exit_type || 'slaughter')
-          : null,
-        product.term_months ? isoMonths(new Date(), product.term_months) : null,
-        boardingFee,
-      ]
-    )).rows[0]
-
-    let schedule = []
-    if (product.model_type === 'installment') {
-      const rows = buildSchedule(principal, product.term_months)
-      for (const p of rows) {
-        const inserted = (await client.query(
-          `INSERT INTO payment_schedule (contract_id, seq, due_date, amount_tiyin)
-           VALUES ($1,$2,$3,$4) RETURNING *`,
-          [contract.id, p.seq, p.due_date, p.amount_tiyin]
-        )).rows[0]
-        schedule.push(inserted)
-      }
-    }
-
-    if (animalId) {
-      await client.query(`UPDATE animals SET status = 'owned' WHERE id = $1`, [animalId])
-    }
-
-    await client.query(
-      `UPDATE products SET slots_taken = slots_taken + 1,
-         status = CASE WHEN slots_taken + 1 >= slots_total THEN 'sold_out' ELSE status END
-       WHERE id = $1`,
-      [product.id]
-    )
-
-    if (cost > 0) {
-      await client.query(
-        `INSERT INTO transactions (user_id, contract_id, type, amount_tiyin, description)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [req.user.id, contract.id, 'contract_purchase', -cost,
-         `Contract #${contract.id} opened (${product.model_type})`
-           + (fee ? ` incl. purchase fee ${fee}` : '')]
-      )
-    }
-
     await client.query('COMMIT')
-    ok(res, { contract, schedule })
+    ok(res, result)
   } catch (e) {
     await client.query('ROLLBACK')
-
-    // Гонка за животное. Проверкой SELECT её не закрыть — два запроса
-    // пройдут проверку одновременно, поэтому полагаемся на уникальный
-    // индекс contracts_one_owner_per_animal и переводим 23505 в текст.
-    if (e.code === '23505' && e.constraint === 'contracts_one_owner_per_animal')
-      return fail(res, 'animal_already_sold', 409)
-
+    if (asRaceError(e)) return fail(res, 'animal_already_sold', 409)
     throw e
   } finally {
     client.release()
   }
 }))
 
+/**
+ * Оформление за клиента. Нужно, когда человек пришёл на ферму лично:
+ * без этого договор можно создать только из приложения, а оно есть не у всех.
+ */
+router.post('/admin/contracts', requireAdmin, asyncHandler(async (req, res) => {
+  const { user_id, product_id, exit_type } = req.body
+  if (!user_id) return fail(res, 'user_id required')
+  if (!product_id) return fail(res, 'product_id required')
+  if (exit_type && !['sale', 'slaughter'].includes(exit_type)) return fail(res, 'invalid_exit_type')
+
+  const user = (await pool.query(`SELECT id FROM users WHERE id = $1`, [user_id])).rows[0]
+  if (!user) return fail(res, 'user_not_found', 404)
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const result = await createContract(client, user_id, { product_id, exit_type })
+    if (result.error) {
+      await client.query('ROLLBACK')
+      return fail(res, result.error, result.status || 400)
+    }
+    await client.query('COMMIT')
+    ok(res, result)
+  } catch (e) {
+    await client.query('ROLLBACK')
+    if (asRaceError(e)) return fail(res, 'animal_already_sold', 409)
+    throw e
+  } finally {
+    client.release()
+  }
+}))
 
 /**
  * Сводка по договору. У каждой модели своя: investment показывает,

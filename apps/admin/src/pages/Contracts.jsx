@@ -17,6 +17,15 @@ const STATUS_BADGE = {
 
 const statusLabel = (t, s) => t('contracts.status' + s[0].toUpperCase() + s.slice(1))
 
+function Row({ label, value, color }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+      <span style={{ color: 'var(--muted)' }}>{label}</span>
+      <span style={{ color, fontWeight: 600 }}>{value}</span>
+    </div>
+  )
+}
+
 export default function Contracts() {
   const language = useStore(s => s.language)
   const t = useT(language)
@@ -30,6 +39,11 @@ export default function Contracts() {
   const [newStatus, setNewStatus] = useState('active')
   const [saving, setSaving] = useState(false)
 
+  const [creating, setCreating] = useState(false)
+  const [users, setUsers] = useState([])
+  const [offers, setOffers] = useState([])
+  const [form, setForm] = useState({ user_id: '', product_id: '', exit_type: 'slaughter' })
+
   const load = () => {
     setLoading(true)
     const qs = new URLSearchParams()
@@ -42,6 +56,45 @@ export default function Contracts() {
   }
 
   useEffect(() => { load() }, [modelFilter, statusFilter])
+
+  // Справочники для формы: клиенты и офферы, которые ещё можно продать
+  const openCreate = () => {
+    setForm({ user_id: '', product_id: '', exit_type: 'slaughter' })
+    setCreating(true)
+    Promise.all([api.get('/admin/users'), api.get('/admin/products?status=active')])
+      .then(([u, p]) => {
+        setUsers(u.users || [])
+        setOffers((p.products || []).filter(x => x.slots_taken < x.slots_total))
+      })
+      .catch(e => alert(t('common.error') + ': ' + e.message))
+  }
+
+  const selectedUser = users.find(u => u.id === Number(form.user_id))
+  const selectedOffer = offers.find(o => o.id === Number(form.product_id))
+  // Рассрочка при оформлении ничего не списывает — платит по графику
+  const charge = selectedOffer && selectedOffer.model_type !== 'installment'
+    ? Number(selectedOffer.price_tiyin) : 0
+  const balance = Number(selectedUser?.balance_tiyin) || 0
+  const enough = balance >= charge
+
+  const create = async () => {
+    setSaving(true)
+    try {
+      await api.post('/admin/contracts', {
+        user_id: Number(form.user_id),
+        product_id: Number(form.product_id),
+        exit_type: selectedOffer?.model_type === 'ownership' ? form.exit_type : undefined,
+      })
+      setCreating(false)
+      load()
+    } catch (e) {
+      const msg = String(e.message)
+      alert(msg.includes('animal_already_sold') ? t('contracts.animalTaken')
+        : msg.includes('insufficient_balance') ? t('contracts.notEnough')
+        : t('common.error') + ': ' + msg)
+    }
+    setSaving(false)
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -111,7 +164,10 @@ export default function Contracts() {
   return (
     <Layout title={t('contracts.title')}>
       <div className="card">
-        <div className="card-title">{t('contracts.title')} ({filtered.length})</div>
+        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{t('contracts.title')} ({filtered.length})</span>
+          <button className="btn btn-primary" onClick={openCreate}>{t('contracts.addBtn')}</button>
+        </div>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
           <input
@@ -146,7 +202,7 @@ export default function Contracts() {
                   <th>{t('contracts.model')}</th>
                   <th>{t('contracts.principal')}</th>
                   <th>{t('contracts.progress')}</th>
-                  <th>{t('contracts.maturity')}</th>
+                  <th>{t('contracts.boardingMonthly')}</th>
                   <th>{t('common.status')}</th>
                   <th>{t('common.actions')}</th>
                 </tr>
@@ -170,7 +226,9 @@ export default function Contracts() {
                     </td>
                     <td>{progress(c)}</td>
                     <td style={{ fontSize: 12, color: 'var(--muted)' }}>
-                      {c.matures_at ? formatDay(c.matures_at, language) : t('common.none')}
+                      {c.boarding_fee_monthly_tiyin
+                        ? formatSum(c.boarding_fee_monthly_tiyin, language)
+                        : c.matures_at ? formatDay(c.matures_at, language) : t('common.none')}
                     </td>
                     <td>
                       <span className={`badge ${STATUS_BADGE[c.status] || 'badge-blue'}`}>
@@ -192,6 +250,105 @@ export default function Contracts() {
           </div>
         )}
       </div>
+
+      {creating && (
+        <div className="modal-overlay" onClick={() => setCreating(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">{t('contracts.addTitle')}</div>
+
+            <div className="form-group">
+              <label className="form-label">{t('contracts.user')}</label>
+              <select className="form-select" value={form.user_id}
+                onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))}>
+                <option value="">{t('contracts.chooseClient')}</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>
+                    #{u.id} {u.name || ''} {u.phone} · {formatSum(u.balance_tiyin, language)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{t('products.title')}</label>
+              <select className="form-select" value={form.product_id}
+                onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))}>
+                <option value="">{t('contracts.chooseOffer')}</option>
+                {offers.map(o => (
+                  <option key={o.id} value={o.id}>
+                    #{o.id} {t('models.' + o.model_type)}
+                    {o.animal_name ? ` · ${o.animal_name}` : ''} · {formatSum(o.price_tiyin, language)}
+                  </option>
+                ))}
+              </select>
+              {offers.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 6 }}>
+                  {t('contracts.noOffers')}
+                </div>
+              )}
+            </div>
+
+            {selectedOffer?.model_type === 'ownership' && (
+              <div className="form-group">
+                <label className="form-label">{t('contracts.exitLabel')}</label>
+                <select className="form-select" value={form.exit_type}
+                  onChange={e => setForm(f => ({ ...f, exit_type: e.target.value }))}>
+                  <option value="slaughter">{t('contracts.exitMeat')}</option>
+                  <option value="sale">{t('contracts.exitSale')}</option>
+                </select>
+              </div>
+            )}
+
+            {/* Расчёт до подтверждения: админ должен видеть, что спишется,
+                а не узнавать это из ошибки после нажатия */}
+            {selectedOffer && (
+              <div style={{
+                background: 'var(--surface-2, #171b26)', borderRadius: 10,
+                padding: 12, fontSize: 13, marginBottom: 12,
+              }}>
+                <Row label={t('contracts.willCharge')} value={formatSum(charge, language)} />
+                {selectedUser && (
+                  <Row
+                    label={t('contracts.clientBalance')}
+                    value={formatSum(balance, language)}
+                    color={enough ? undefined : 'var(--red)'}
+                  />
+                )}
+                {selectedOffer.boarding_fee_monthly_tiyin && (
+                  <Row
+                    label={t('contracts.boardingMonthly')}
+                    value={formatSum(selectedOffer.boarding_fee_monthly_tiyin, language)}
+                  />
+                )}
+                <Row
+                  label={t('contracts.exitLabel')}
+                  value={selectedOffer.model_type === 'investment'
+                    ? t('contracts.exitSale')
+                    : selectedOffer.model_type === 'ownership'
+                      ? (form.exit_type === 'sale' ? t('contracts.exitSale') : t('contracts.exitMeat'))
+                      : t('products.meatWeight')}
+                />
+                {!enough && selectedUser && (
+                  <div style={{ color: 'var(--red)', marginTop: 6 }}>{t('contracts.notEnough')}</div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                className="btn btn-primary" style={{ flex: 1 }}
+                disabled={saving || !form.user_id || !form.product_id || !enough}
+                onClick={create}
+              >
+                {saving ? t('common.saving') : t('common.confirm')}
+              </button>
+              <button className="btn btn-secondary" onClick={() => setCreating(false)}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div className="modal-overlay" onClick={() => setEditing(null)}>
