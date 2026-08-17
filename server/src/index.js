@@ -1,6 +1,6 @@
+import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
-import dotenv from 'dotenv'
 import authRoutes from './routes/auth.js'
 import sheepRoutes from './routes/sheep.js'
 import sharesRoutes from './routes/shares.js'
@@ -10,7 +10,6 @@ import profileRoutes from './routes/profile.js'
 import activityRouter from './routes/activity.js'
 import bot from './services/telegramBot.js'
 
-dotenv.config()
 const app = express()
 
 bot.setMyCommands([
