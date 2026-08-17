@@ -100,6 +100,18 @@ const migrate = async () => {
     ALTER TABLE animals ADD COLUMN IF NOT EXISTS last_video_at      TIMESTAMP;
     ALTER TABLE animals ADD COLUMN IF NOT EXISTS last_scan_at       TIMESTAMP;
 
+    -- VARCHAR(500) мало: подписанные ссылки на S3 и Cloudinary регулярно
+    -- длиннее, и картинка молча обрезалась бы при вставке. varchar -> text
+    -- в Postgres бинарно совместим, таблица не перезаписывается.
+    ALTER TABLE animals ALTER COLUMN photo_url TYPE TEXT;
+
+    -- Трансляция с камеры. Пусто — значит камеры нет, и клиент покажет
+    -- это честно, а не мёртвую кнопку «смотреть».
+    ALTER TABLE animals ADD COLUMN IF NOT EXISTS stream_url TEXT;
+    -- Камера чаще стоит на загон, а не на отдельное животное, поэтому
+    -- ссылка есть и у фермы. У животного — приоритет.
+    ALTER TABLE farms   ADD COLUMN IF NOT EXISTS stream_url TEXT;
+
     -- v1-поля долевого владения больше не нужны
     ALTER TABLE animals DROP COLUMN IF EXISTS total_shares;
     ALTER TABLE animals DROP COLUMN IF EXISTS sold_shares;
@@ -147,6 +159,10 @@ const migrate = async () => {
       thumbnail_url VARCHAR(500),
       recorded_at   TIMESTAMP DEFAULT NOW()
     );
+
+    -- Ссылки на видео тоже бывают длиннее 500 символов
+    ALTER TABLE videos ALTER COLUMN url           TYPE TEXT;
+    ALTER TABLE videos ALTER COLUMN thumbnail_url TYPE TEXT;
 
     CREATE TABLE IF NOT EXISTS activity (
       id             SERIAL PRIMARY KEY,
@@ -207,6 +223,7 @@ const migrate = async () => {
       created_at       TIMESTAMP DEFAULT NOW()
     );
     ALTER TABLE products ADD COLUMN IF NOT EXISTS boarding_fee_monthly_tiyin BIGINT;
+    ALTER TABLE products ALTER COLUMN photo_url TYPE TEXT;
 
     -- ============================================================
     -- 4.1 ПЕРЕИМЕНОВАНИЕ МОДЕЛЕЙ ПОД РЕАЛЬНЫЙ БИЗНЕС
@@ -229,21 +246,30 @@ const migrate = async () => {
       -- Констрейнты снимаем до переименования, иначе UPDATE в них упрётся
       ALTER TABLE products  DROP CONSTRAINT IF EXISTS products_model_check;
       ALTER TABLE products  DROP CONSTRAINT IF EXISTS products_model_fields_check;
-      ALTER TABLE contracts DROP CONSTRAINT IF EXISTS contracts_model_check;
+      UPDATE products SET model_type = 'investment' WHERE model_type = 'ownership';
+      DELETE FROM products WHERE model_type = 'fixed_income';
 
-      UPDATE products  SET model_type = 'investment' WHERE model_type = 'ownership';
-      UPDATE contracts SET model_type = 'investment' WHERE model_type = 'ownership';
+      -- contracts создаётся ниже по файлу, и на чистой базе его здесь
+      -- ещё нет. Без этой проверки первый же npm run migrate падает
+      -- на «relation contracts does not exist».
+      IF to_regclass('public.contracts') IS NOT NULL THEN
+        ALTER TABLE contracts DROP CONSTRAINT IF EXISTS contracts_model_check;
+        UPDATE contracts SET model_type = 'investment' WHERE model_type = 'ownership';
 
-      -- Договоры по удаляемой модели закрываем, а не бросаем: у них
-      -- есть начисления в payouts, которые иначе повиснут сиротами
-      UPDATE contracts SET status = 'cancelled', closed_at = NOW()
-        WHERE model_type = 'fixed_income' AND status IN ('pending','active');
-      DELETE FROM payouts WHERE kind = 'interest'
-        AND contract_id IN (SELECT id FROM contracts WHERE model_type = 'fixed_income');
-      DELETE FROM transactions
-        WHERE contract_id IN (SELECT id FROM contracts WHERE model_type = 'fixed_income');
-      DELETE FROM contracts WHERE model_type = 'fixed_income';
-      DELETE FROM products  WHERE model_type = 'fixed_income';
+        -- Договоры по удаляемой модели закрываем, а не бросаем: у них
+        -- есть начисления в payouts, которые иначе повиснут сиротами
+        UPDATE contracts SET status = 'cancelled', closed_at = NOW()
+          WHERE model_type = 'fixed_income' AND status IN ('pending','active');
+        IF to_regclass('public.payouts') IS NOT NULL THEN
+          DELETE FROM payouts WHERE kind = 'interest'
+            AND contract_id IN (SELECT id FROM contracts WHERE model_type = 'fixed_income');
+        END IF;
+        IF to_regclass('public.transactions') IS NOT NULL THEN
+          DELETE FROM transactions
+            WHERE contract_id IN (SELECT id FROM contracts WHERE model_type = 'fixed_income');
+        END IF;
+        DELETE FROM contracts WHERE model_type = 'fixed_income';
+      END IF;
     END $$;
 
     DO $$

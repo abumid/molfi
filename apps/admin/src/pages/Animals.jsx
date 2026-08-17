@@ -22,6 +22,7 @@ const EMPTY_FORM = {
   name: '', species: 'sheep', breed: '', sex: '',
   weight_kg: '', price_per_kg_sum: '', acquired_cost_sum: '',
   rfid_tag: '', birth_date: '', status: 'active',
+  photo_url: '', stream_url: '',
 }
 
 const toForm = (a) => ({
@@ -35,6 +36,8 @@ const toForm = (a) => ({
   rfid_tag: a.rfid_tag || '',
   birth_date: a.birth_date ? String(a.birth_date).slice(0, 10) : '',
   status: a.status || 'active',
+  photo_url: a.photo_url || '',
+  stream_url: a.stream_url || '',
 })
 
 const toPayload = (f) => ({
@@ -48,6 +51,10 @@ const toPayload = (f) => ({
   rfid_tag: f.rfid_tag.trim() || null,
   birth_date: f.birth_date || null,
   status: f.status,
+  photo_url: f.photo_url.trim() || null,
+  // Пустую строку шлём намеренно: на бэкенде это «очистить ссылку».
+  // Через null камеру нельзя было бы снять — COALESCE сохранил бы старую.
+  stream_url: f.stream_url.trim(),
 })
 
 export default function Animals() {
@@ -280,6 +287,21 @@ export default function Animals() {
             {field('acquired_cost_sum', t('animals.acquiredCost'), 'number', '')}
             {field('rfid_tag', t('animals.rfidTag'), 'text', 'RFID-016')}
             {field('birth_date', t('animals.birthDate'), 'date')}
+            {field('photo_url', t('animals.photoUrl'), 'text', 'https://…')}
+
+            <div className="form-group">
+              <label className="form-label">{t('animals.streamUrl')}</label>
+              <input
+                className="form-input"
+                type="text"
+                placeholder="https://…/stream.m3u8"
+                value={form.stream_url}
+                onChange={e => setForm(f => ({ ...f, stream_url: e.target.value }))}
+              />
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                {t('animals.streamHint')}
+              </div>
+            </div>
 
             {editing && (
               <div className="form-group">

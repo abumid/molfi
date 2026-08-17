@@ -8,10 +8,14 @@ import Catalog from './pages/Catalog'
 import ProductDetail from './pages/ProductDetail'
 import Checkout from './pages/Checkout'
 import Contracts from './pages/Contracts'
+import ContractDetail from './pages/ContractDetail'
 import Wallet from './pages/Wallet'
 import Profile from './pages/Profile'
 
-const NAV_PATHS = ['/catalog', '/wallet', '/profile']
+// Меню показываем на корневых экранах. На карточках и оформлении его нет
+// намеренно: там своя нижняя кнопка действия, две панели друг на друге
+// перекрывают контент.
+const NAV_PATHS = ['/catalog', '/contracts', '/wallet', '/profile']
 
 function LoadingScreen() {
   return (
@@ -39,12 +43,19 @@ function Layout() {
   const { isAuthenticated, isLoading } = useStore()
   const restoreSession = useStore(s => s.restoreSession)
   const fetchModels = useStore(s => s.fetchModels)
+  const fetchContracts = useStore(s => s.fetchContracts)
 
   // Единственное место, где восстанавливается сессия и загружается каталог —
   // раньше это же самое вызывалось повторно в main.jsx при старте приложения,
   // из-за чего /auth/me и /sheep запрашивались дважды при каждом запуске.
+  //
+  // Договоры тянем здесь же: по ним нижнее меню решает, показывать ли точку
+  // о неоплаченном уходе, а меню живёт на всех экранах сразу.
   useEffect(() => {
-    restoreSession().finally(() => fetchModels())
+    restoreSession().finally(() => {
+      fetchModels()
+      if (localStorage.getItem('molfi_token')) fetchContracts()
+    })
   }, [])
 
   return (
@@ -58,6 +69,7 @@ function Layout() {
         <Route path="/product/:id" element={<PrivateRoute><ProductDetail /></PrivateRoute>} />
         <Route path="/product/:id/checkout" element={<PrivateRoute><Checkout /></PrivateRoute>} />
         <Route path="/contracts" element={<PrivateRoute><Contracts /></PrivateRoute>} />
+        <Route path="/contracts/:id" element={<PrivateRoute><ContractDetail /></PrivateRoute>} />
         <Route path="/wallet" element={<PrivateRoute><Wallet /></PrivateRoute>} />
         <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
       </Routes>

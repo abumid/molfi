@@ -244,7 +244,6 @@ export default function Auth() {
 
   const login = useStore(s => s.login)
   const language = useStore(s => s.language)
-  const setLanguage = useStore(s => s.setLanguage)
   const t = useT(language)
   const navigate = useNavigate()
 

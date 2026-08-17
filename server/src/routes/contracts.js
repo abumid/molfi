@@ -36,7 +36,8 @@ const SELECT_CONTRACT = `
          a.final_sale_price_tiyin,
          a.price_per_kg_tiyin,
          f.name             AS farm_name,
-         f.location         AS farm_location
+         f.location         AS farm_location,
+         COALESCE(a.stream_url, f.stream_url) AS stream_url
   FROM contracts c
   JOIN products p ON p.id = c.product_id
   LEFT JOIN animals a ON a.id = c.animal_id
@@ -257,10 +258,39 @@ router.get('/contracts', requireAuth, asyncHandler(async (req, res) => {
     return acc
   }, {})
 
-  const withSummary = contracts.map(c => ({
-    ...c,
-    summary: summarize(c, rates, byContract[c.id] || []),
-  }))
+  // Крайние замеры веса — чтобы в списке показать прибавку.
+  // Всю историю тянуть незачем: клиент считает прирост по первой
+  // и последней точке, промежуточные на это не влияют.
+  const animalIds = [...new Set(contracts.map(c => c.animal_id).filter(Boolean))]
+  const edges = animalIds.length
+    ? (await pool.query(
+        `SELECT animal_id,
+                (array_agg(weight_g    ORDER BY recorded_at ASC ))[1] AS first_g,
+                (array_agg(recorded_at ORDER BY recorded_at ASC ))[1] AS first_at,
+                (array_agg(weight_g    ORDER BY recorded_at DESC))[1] AS last_g,
+                (array_agg(recorded_at ORDER BY recorded_at DESC))[1] AS last_at
+         FROM weight_records
+         WHERE animal_id = ANY($1)
+         GROUP BY animal_id`,
+        [animalIds]
+      )).rows
+    : []
+
+  const byAnimal = Object.fromEntries(edges.map(e => [e.animal_id, e]))
+
+  const withSummary = contracts.map(c => {
+    const e = byAnimal[c.animal_id]
+    return {
+      ...c,
+      // Отдаём в том же виде, что и полная история: клиент считает
+      // прибавку одной и той же функцией, без второй реализации
+      weights: e
+        ? [{ weight_g: e.last_g, recorded_at: e.last_at },
+           { weight_g: e.first_g, recorded_at: e.first_at }]
+        : [],
+      summary: summarize(c, rates, byContract[c.id] || []),
+    }
+  })
 
   ok(res, { contracts: withSummary })
 }))

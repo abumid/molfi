@@ -2,16 +2,6 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from '../../store'
 import { useT } from '../../i18n'
 
-function HomeIcon({ active }) {
-  const color = active ? 'var(--color-green-light)' : 'var(--color-text-muted)'
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <path d="M4 11l8-6 8 6v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19v-8Z" stroke={color} strokeWidth="1.7" strokeLinejoin="round" fill={active ? 'rgba(58,154,58,0.15)' : 'none'} />
-      <path d="M9.5 20.5V14h5v6.5" stroke={color} strokeWidth="1.7" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
 function CatalogIcon({ active }) {
   const color = active ? 'var(--color-green-light)' : 'var(--color-text-muted)'
   return (
@@ -20,6 +10,20 @@ function CatalogIcon({ active }) {
       <rect x="13" y="3.5" width="7.5" height="7.5" rx="1.5" stroke={color} strokeWidth="1.7" fill={active ? 'rgba(58,154,58,0.15)' : 'none'} />
       <rect x="3.5" y="13" width="7.5" height="7.5" rx="1.5" stroke={color} strokeWidth="1.7" fill={active ? 'rgba(58,154,58,0.15)' : 'none'} />
       <rect x="13" y="13" width="7.5" height="7.5" rx="1.5" stroke={color} strokeWidth="1.7" fill={active ? 'rgba(58,154,58,0.15)' : 'none'} />
+    </svg>
+  )
+}
+
+function AssetsIcon({ active }) {
+  const color = active ? 'var(--color-green-light)' : 'var(--color-text-muted)'
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <path d="M6 10.5c0-2.2 2.7-4 6-4s6 1.8 6 4v4.5a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-4.5Z"
+            stroke={color} strokeWidth="1.7" strokeLinejoin="round"
+            fill={active ? 'rgba(58,154,58,0.15)' : 'none'} />
+      <path d="M9 17v3M15 17v3" stroke={color} strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M6 9.5C4.9 9.5 4 8.6 4 7.5S4.9 5.5 6 5.5M18 9.5c1.1 0 2-.9 2-2s-.9-2-2-2"
+            stroke={color} strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   )
 }
@@ -45,29 +49,32 @@ function ProfileIcon({ active }) {
   )
 }
 
+// «Мои активы» — обязательная вкладка, а не удобство: после покупки оффер
+// уходит в sold_out и исчезает с витрины, и без этого входа владелец
+// теряет своё животное из виду.
 const NAV = [
-  { path: '/catalog', key: 'home', Icon: HomeIcon },
-  { path: '/catalog?tab=available', key: 'catalog', Icon: CatalogIcon },
+  { path: '/catalog', key: 'catalog', Icon: CatalogIcon },
+  { path: '/contracts', key: 'assets', Icon: AssetsIcon, badge: true },
   { path: '/wallet', key: 'wallet', Icon: WalletIcon },
   { path: '/profile', key: 'profile', Icon: ProfileIcon },
 ]
 
 export default function BottomNav() {
   const navigate = useNavigate()
-  const { pathname, search } = useLocation()
+  const { pathname } = useLocation()
   const language = useStore(s => s.language)
+  const contracts = useStore(s => s.contracts)
   const t = useT(language)
 
-  const isActive = (item) => {
-    if (item.path === '/catalog') {
-      return (pathname === '/catalog' && search !== '?tab=available') ||
-             pathname.startsWith('/sheep')
-    }
-    if (item.path === '/catalog?tab=available') {
-      return pathname === '/catalog' && search === '?tab=available'
-    }
-    return pathname === item.path || pathname.startsWith(item.path)
-  }
+  // Точка на вкладке, когда есть неоплаченный уход. Долг по содержанию —
+  // единственное, что требует действия клиента, и он не должен узнавать
+  // о нём из просрочки.
+  const owes = contracts.some(c =>
+    c.status === 'active' &&
+    (Number(c.boarding_accrued_tiyin) || 0) > (Number(c.boarding_paid_tiyin) || 0))
+
+  const isActive = (item) =>
+    pathname === item.path || pathname.startsWith(item.path + '/')
 
   return (
     <nav style={{
@@ -87,7 +94,16 @@ export default function BottomNav() {
             cursor: 'pointer', fontSize: 11, fontFamily: 'Inter, sans-serif',
             fontWeight: active ? 600 : 400
           }}>
-            <item.Icon active={active} />
+            <span style={{ position: 'relative', lineHeight: 0 }}>
+              <item.Icon active={active} />
+              {item.badge && owes && (
+                <span style={{
+                  position: 'absolute', top: -1, right: -1, width: 8, height: 8,
+                  borderRadius: '50%', background: 'var(--color-accent)',
+                  border: '2px solid var(--color-surface)', boxSizing: 'content-box',
+                }} />
+              )}
+            </span>
             {label}
           </button>
         )

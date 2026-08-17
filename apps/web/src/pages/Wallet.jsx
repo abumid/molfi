@@ -176,7 +176,7 @@ export default function Wallet() {
                         ? (Number(c.summary?.net) || 0)
                         : (Number(c.principal_tiyin) || 0), language)}
                     </div>
-                    <button onClick={() => navigate('/contracts')} style={{
+                    <button onClick={() => navigate(`/contracts/${c.id}`)} style={{
                       marginTop: 4, background: 'none', border: 'none', color: C.textMuted,
                       fontSize: 12, cursor: 'pointer', padding: 0,
                     }}>

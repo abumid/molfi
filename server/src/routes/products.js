@@ -20,7 +20,10 @@ const SELECT_PRODUCT = `
          a.rfid_tag         AS animal_rfid_tag,
          a.price_per_kg_tiyin,
          f.name             AS farm_name,
-         f.location         AS farm_location
+         f.location         AS farm_location,
+         -- Камера животного важнее камеры фермы: если на барана
+         -- направлена своя, показываем её
+         COALESCE(a.stream_url, f.stream_url) AS stream_url
   FROM products p
   LEFT JOIN animals a ON a.id = p.animal_id
   LEFT JOIN farms   f ON f.id = p.farm_id

@@ -4,7 +4,7 @@ import { api } from '../utils/api'
 const TOKEN_KEY = 'molfi_token'
 const LANG_KEY = 'molfi_lang'
 
-export const useStore = create((set, get) => ({
+export const useStore = create((set) => ({
   token: localStorage.getItem(TOKEN_KEY) || null,
   user: null,
   isAuthenticated: false,

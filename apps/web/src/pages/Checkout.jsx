@@ -16,7 +16,7 @@ export default function Checkout() {
   const [exitType, setExitType] = useState('slaughter')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [done, setDone] = useState(false)
+  const [done, setDone] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -42,12 +42,14 @@ export default function Checkout() {
     setSaving(true)
     setError(null)
     try {
-      await api.post('/contracts', {
+      // id нового договора нужен сразу: с этого экрана ведём человека
+      // прямо к его животному, а не в общий список
+      const res = await api.post('/contracts', {
         product_id: product.id,
         ...(product.model_type === 'ownership' ? { exit_type: exitType } : {}),
       })
       await Promise.all([fetchBalance(), fetchContracts()])
-      setDone(true)
+      setDone(res.contract)
     } catch (e) {
       const msg = String(e.message)
       setError(
@@ -66,7 +68,12 @@ export default function Checkout() {
         <h2 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 20, margin: 0 }}>{t.checkout.done}</h2>
         <p style={{ textAlign: 'center', margin: '10px 0 24px', maxWidth: 320 }}>{t.checkout.doneText}</p>
         <div style={{ width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <Button onClick={() => navigate('/profile')}>{t.checkout.toContracts}</Button>
+          {/* Ведём на карточку купленного животного. Раньше отсюда кидало
+              в профиль, где животного нет — человек терял его из виду
+              ровно в тот момент, когда за него заплатил. */}
+          <Button onClick={() => navigate(`/contracts/${done.id}`, { replace: true })}>
+            {done.animal_id ? t.contracts.track : t.checkout.toContracts}
+          </Button>
           <Button variant="secondary" onClick={() => navigate('/catalog')}>{t.nav.catalog}</Button>
         </div>
       </Centered>

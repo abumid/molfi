@@ -102,7 +102,13 @@ export const investmentPayout = (contract, animal, opts = {}) => {
     ? boardingOutstanding(contract)
     : boardingDue(contract, asOf)
 
-  const profit = Math.max(0, gross - principal - boarding)
+  // Знаковый результат — для показа клиенту. Отдельно от profit намеренно:
+  // profit обрезан по нулю ради комиссии (брать процент с убытка нельзя),
+  // и если показывать его же, убыток на экране превращается в «0» —
+  // человек видит ноль и не понимает, потерял он что-то или нет.
+  const pnl = gross - principal - boarding
+
+  const profit = Math.max(0, pnl)
   const feeClient = Math.round(profit * num(profitFeeClientBp) / BP)
   const feeFarm = Math.round(profit * num(profitFeeFarmBp) / BP)
 
@@ -116,6 +122,7 @@ export const investmentPayout = (contract, animal, opts = {}) => {
     principal,
     boarding,
     profit,
+    pnl,
     fee_client: feeClient,
     fee_farm: feeFarm,
     net,

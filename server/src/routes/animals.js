@@ -86,7 +86,7 @@ router.post('/admin/animals', requireAdmin, asyncHandler(async (req, res) => {
   const {
     name, species, breed, sex, birth_date, current_weight_g,
     price_per_kg_tiyin, acquired_cost_tiyin, rfid_tag,
-    description, photo_url, farm_id, status, expected_sale_date,
+    description, photo_url, farm_id, status, expected_sale_date, stream_url,
   } = req.body
 
   if (!name) return fail(res, 'name required')
@@ -97,14 +97,15 @@ router.post('/admin/animals', requireAdmin, asyncHandler(async (req, res) => {
     `INSERT INTO animals
        (farm_id, name, species, breed, sex, birth_date, current_weight_g,
         price_per_kg_tiyin, acquired_cost_tiyin, rfid_tag, description, photo_url,
-        status, expected_sale_date)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        status, expected_sale_date, stream_url)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
       farm_id || null, name, species || 'sheep', breed || null, sex || null,
       birth_date || null, current_weight_g || 0,
       price_per_kg_tiyin || null, acquired_cost_tiyin || null, rfid_tag || null,
       description || null, photo_url || null, status || 'active', expected_sale_date || null,
+      stream_url || null,
     ]
   )).rows[0]
 
@@ -137,12 +138,19 @@ router.put('/admin/animals/:id', requireAdmin, asyncHandler(async (req, res) => 
        photo_url          = COALESCE($12, photo_url),
        farm_id            = COALESCE($13, farm_id),
        status             = COALESCE($14, status),
-       expected_sale_date = COALESCE($15, expected_sale_date)
+       expected_sale_date = COALESCE($15, expected_sale_date),
+       -- COALESCE тут не годится: им ссылку на камеру нельзя стереть,
+       -- а снятую камеру убрать надо. Пустая строка = очистить,
+       -- отсутствие поля в запросе = не трогать.
+       stream_url         = CASE WHEN $16::text IS NULL THEN stream_url
+                                 WHEN $16 = ''         THEN NULL
+                                 ELSE $16 END
      WHERE id = $1 RETURNING *`,
     [
       req.params.id, b.name, b.species, b.breed, b.sex, b.birth_date,
       b.current_weight_g, b.price_per_kg_tiyin, b.acquired_cost_tiyin, b.rfid_tag,
       b.description, b.photo_url, b.farm_id, b.status, b.expected_sale_date,
+      b.stream_url === undefined ? null : String(b.stream_url),
     ]
   )).rows[0]
   if (!animal) return fail(res, 'not_found', 404)
