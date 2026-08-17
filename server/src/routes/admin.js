@@ -12,10 +12,6 @@ const router = Router()
 // обратную сторону.
 const INCOME_TYPES = ['deposit', 'payout', 'topup']
 
-router.get('/sheep', requireAdmin, asyncHandler(async (req, res) => {
-  const result = await pool.query(`SELECT * FROM sheep ORDER BY created_at DESC`)
-  ok(res, { sheep: result.rows })
-}))
 
 router.get('/users', requireAdmin, asyncHandler(async (req, res) => {
   const result = await pool.query(`
@@ -290,150 +286,13 @@ router.delete('/transactions/:id', requireAdmin, asyncHandler(async (req, res) =
   ok(res, {})
 }))
 
-router.post('/sheep', requireAdmin, asyncHandler(async (req, res) => {
-  const { name, breed, birth_date, current_weight_g, price_tiyin, rfid_tag, description, farm_id, price_per_kg_tiyin, total_shares } = req.body
-  const result = await pool.query(
-    `INSERT INTO sheep (farm_id, name, breed, birth_date, current_weight_g, price_tiyin, rfid_tag, description, price_per_kg_tiyin, total_shares)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-    [farm_id || 1, name, breed, birth_date, current_weight_g, price_tiyin, rfid_tag, description, price_per_kg_tiyin || 4500000, total_shares || 100]
-  )
-  ok(res, { sheep: result.rows[0] })
-}))
 
-// POST /sheep/:id/sell удалён в v2: раздавал выплаты по долям через
-// calcFinalPayout, которого в новых расчётах нет. Продажа животного
-// переезжает в contracts (ownership) на этапе 3.
+// Все ручки по животным переехали в routes/animals.js:
+//   /admin/sheep        -> /admin/animals
+//   /admin/sheep/:id/sell -> /admin/animals/:id/sell (выплата владельцу, не дольщикам)
+// /admin/sheep/:id/unsell удалён: откатывал выплаты по долям, которых больше нет.
 
-router.post('/sheep/:id/unsell', requireAdmin, asyncHandler(async (req, res) => {
-  const sheep = (await pool.query(
-    `SELECT * FROM sheep WHERE id = $1 AND status = 'sold'`,
-    [req.params.id]
-  )).rows[0]
-  if (!sheep) return res.status(404).json({ error: 'not_found', message: 'Баран не найден или не продан' })
 
-  const paidShares = (await pool.query(
-    `SELECT s.*, wb.balance_tiyin as user_balance, u.phone as user_phone
-     FROM shares s
-     LEFT JOIN wallet_balances wb ON wb.user_id = s.user_id
-     LEFT JOIN users u ON u.id = s.user_id
-     WHERE s.sheep_id = $1 AND s.status = 'paid'`,
-    [req.params.id]
-  )).rows
 
-  const payoutByUser = {}
-  for (const share of paidShares) {
-    const tx = (await pool.query(
-      `SELECT COALESCE(SUM(amount_tiyin), 0)::bigint as total
-       FROM transactions
-       WHERE user_id = $1 AND type = 'payout' AND description LIKE '%' || $2 || '%'`,
-      [share.user_id, sheep.name]
-    )).rows[0]
-    payoutByUser[share.user_id] = Number(tx.total)
-  }
-
-  const insufficientUsers = []
-  for (const share of paidShares) {
-    const payoutAmount = payoutByUser[share.user_id] || 0
-    const balance = Number(share.user_balance || 0)
-    if (balance < payoutAmount) {
-      insufficientUsers.push({
-        user_id: share.user_id,
-        phone: share.user_phone,
-        deficit_tiyin: payoutAmount - balance
-      })
-    }
-  }
-
-  if (insufficientUsers.length > 0) {
-    return res.status(400).json({
-      error: 'insufficient_balance',
-      message: 'У некоторых инвесторов недостаточно баланса',
-      users: insufficientUsers
-    })
-  }
-
-  const client = await pool.connect()
-  let reversed_count = 0
-  try {
-    await client.query('BEGIN')
-
-    await client.query(
-      `UPDATE sheep SET status = 'active', final_weight_g = NULL, final_sale_price_tiyin = NULL, sold_at = NULL WHERE id = $1`,
-      [req.params.id]
-    )
-
-    for (const share of paidShares) {
-      const payoutAmount = payoutByUser[share.user_id] || 0
-      await client.query(
-        `UPDATE wallet_balances SET balance_tiyin = balance_tiyin - $1 WHERE user_id = $2`,
-        [payoutAmount, share.user_id]
-      )
-      await client.query(`UPDATE shares SET status = 'active' WHERE id = $1`, [share.id])
-      await client.query(
-        `DELETE FROM transactions WHERE user_id = $1 AND type = 'payout' AND description LIKE '%' || $2 || '%'`,
-        [share.user_id, sheep.name]
-      )
-      reversed_count++
-    }
-
-    await client.query('COMMIT')
-  } catch (e) {
-    await client.query('ROLLBACK')
-    throw e
-  } finally {
-    client.release()
-  }
-
-  ok(res, { reversed_count })
-}))
-
-router.delete('/sheep/:id', requireAdmin, asyncHandler(async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT COUNT(*)::int as cnt FROM shares WHERE sheep_id = $1 AND status = 'active'`,
-    [req.params.id]
-  )
-  if (rows[0].cnt > 0) {
-    return res.status(400).json({
-      error: 'has_active_shares',
-      message: 'Нельзя удалить барана с активными долями'
-    })
-  }
-
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-    await client.query(`DELETE FROM shares WHERE sheep_id = $1`, [req.params.id])
-    await client.query(`DELETE FROM activity WHERE sheep_id = $1`, [req.params.id])
-    await client.query(`DELETE FROM videos WHERE sheep_id = $1`, [req.params.id])
-    await client.query(`DELETE FROM weight_records WHERE sheep_id = $1`, [req.params.id])
-    await client.query(`DELETE FROM sheep WHERE id = $1`, [req.params.id])
-    await client.query('COMMIT')
-  } catch (e) {
-    await client.query('ROLLBACK')
-    throw e
-  } finally {
-    client.release()
-  }
-
-  ok(res, {})
-}))
-
-router.put('/sheep/:id', requireAdmin, asyncHandler(async (req, res) => {
-  const { name, breed, current_weight_g, price_tiyin, rfid_tag, price_per_kg_tiyin, status } = req.body
-  const result = await pool.query(
-    `UPDATE sheep SET
-       name = COALESCE($1, name),
-       breed = COALESCE($2, breed),
-       current_weight_g = COALESCE($3, current_weight_g),
-       price_tiyin = COALESCE($4, price_tiyin),
-       rfid_tag = COALESCE($5, rfid_tag),
-       price_per_kg_tiyin = COALESCE($6, price_per_kg_tiyin),
-       status = COALESCE($7, status)
-     WHERE id = $8
-     RETURNING *`,
-    [name, breed, current_weight_g, price_tiyin, rfid_tag, price_per_kg_tiyin, status, req.params.id]
-  )
-  ok(res, { sheep: result.rows[0] })
-}))
 
 export default router

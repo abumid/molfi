@@ -2,8 +2,10 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import authRoutes from './routes/auth.js'
-import sheepRoutes from './routes/sheep.js'
-import sharesRoutes from './routes/shares.js'
+import animalsRoutes from './routes/animals.js'
+import productsRoutes from './routes/products.js'
+import contractsRoutes from './routes/contracts.js'
+import paymentsRoutes from './routes/payments.js'
 import walletRoutes from './routes/wallet.js'
 import adminRoutes from './routes/admin.js'
 import profileRoutes from './routes/profile.js'
@@ -36,9 +38,13 @@ app.use(cors({
 app.use(express.json())
 
 app.use('/api/auth', authRoutes)
-app.use('/api/sheep', sheepRoutes)
 app.use('/api', activityRouter)
-app.use('/api/shares', sharesRoutes)
+app.use('/api', animalsRoutes)
+// products/contracts/payments монтируются на /api целиком: внутри лежат
+// и публичные пути, и админские (/admin/products и т.д.)
+app.use('/api', productsRoutes)
+app.use('/api', contractsRoutes)
+app.use('/api', paymentsRoutes)
 app.use('/api/wallet', walletRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/profile', profileRoutes)

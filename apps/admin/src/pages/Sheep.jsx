@@ -27,8 +27,8 @@ export default function Sheep() {
   const [searchSheep, setSearchSheep] = useState('')
 
   const load = () => {
-    api.get('/admin/sheep')
-      .then(d => { setSheep(d.sheep || []); setLoading(false) })
+    api.get('/admin/animals')
+      .then(d => { setSheep(d.animals || []); setLoading(false) })
       .catch(() => setLoading(false))
   }
 
@@ -42,7 +42,7 @@ export default function Sheep() {
       // Цена барана = вес × цена за кг
       const priceTiyin = Math.round(weightG / 1000 * pricePerKgTiyin)
 
-      await api.post('/admin/sheep', {
+      await api.post('/admin/animals', {
         name: form.name,
         breed: form.breed,
         current_weight_g: weightG,
@@ -69,7 +69,7 @@ export default function Sheep() {
         : `Удалить "${name}"? Это действие нельзя отменить.`
     )) return
     try {
-      await api.delete(`/admin/sheep/${id}`)
+      await api.delete(`/admin/animals/${id}`)
       setSheep(prev => prev.filter(s => s.id !== id))
     } catch (e) {
       alert(
@@ -88,7 +88,7 @@ export default function Sheep() {
     )) return
     try {
       const result = await api.post(
-        `/admin/sheep/${s.id}/unsell`, {}
+        `/admin/animals/${s.id}/unsell`, {}
       )
       setSheep(prev => prev.map(x =>
         x.id === s.id ? { ...x, status: 'active' } : x
@@ -120,7 +120,7 @@ export default function Sheep() {
       const pricePerKgTiyin = Math.round(Number(selected.price_per_kg_sum) * 100)
       const priceTiyin = Math.round(weightG / 1000 * pricePerKgTiyin)
 
-      await api.put(`/admin/sheep/${selected.id}`, {
+      await api.put(`/admin/animals/${selected.id}`, {
         name: selected.name,
         breed: selected.breed,
         current_weight_g: weightG,
@@ -147,7 +147,7 @@ export default function Sheep() {
     setSelling(true)
     try {
       const result = await api.post(
-        `/admin/sheep/${sellModal.id}/sell`,
+        `/admin/animals/${sellModal.id}/sell`,
         {
           final_weight_g: Math.round(
             Number(sellForm.final_weight) * 1000

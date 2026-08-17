@@ -212,7 +212,17 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
 }))
 
 router.get('/me', requireAuth, asyncHandler(async (req, res) => {
-  const user = (await pool.query(`SELECT id, phone, name, balance, role FROM users WHERE id=$1`, [req.user.id])).rows[0]
+  // Баланс берём из wallet_balances — это единственная таблица, в которую
+  // реально пишут пополнения и списания. users.balance не обновлял никто,
+  // и профиль показывал ноль всем подряд.
+  const user = (await pool.query(
+    `SELECT u.id, u.phone, u.name, u.role, u.language,
+            COALESCE(w.balance_tiyin, 0) AS balance
+     FROM users u
+     LEFT JOIN wallet_balances w ON w.user_id = u.id
+     WHERE u.id = $1`,
+    [req.user.id]
+  )).rows[0]
   if (!user) return fail(res, 'User not found', 404)
   ok(res, { user })
 }))
