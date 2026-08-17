@@ -11,25 +11,26 @@ const C = {
 
 const FILTERS = [
   ['all', 'filter_all'],
-  ['share_purchase', 'filter_investments'],
+  ['contract_purchase', 'filter_investments'],
   ['payout', 'filter_payouts'],
   ['topup', 'filter_topups'],
 ]
 
+// Расход или приход. Список совпадает с INCOME_TYPES на бэкенде —
+// если разъедется, знак в истории будет врать.
+const INCOME = ['payout', 'topup', 'deposit']
+
 const txIcon = (type) => {
-  if (type === 'share_purchase') return '📈'
+  if (type === 'contract_purchase') return '📈'
+  if (type === 'boarding_payment') return '🌾'
+  if (type === 'installment_payment') return '📅'
   if (type === 'payout') return '💰'
   if (type === 'topup' || type === 'deposit') return '⬆️'
   return '⬇️'
 }
 
-const txColor = (type) => {
-  if (type === 'payout' || type === 'topup' || type === 'deposit') return C.accent
-  if (type === 'share_purchase' || type === 'withdrawal' || type === 'withdraw') return C.red
-  return C.text
-}
-
-const txSign = (type) => (txColor(type) === C.accent ? '+' : '-')
+const txColor = (type) => (INCOME.includes(type) ? C.accent : C.red)
+const txSign = (type) => (INCOME.includes(type) ? '+' : '−')
 
 function ModalSheet({ onClose, children }) {
   return (
@@ -55,7 +56,7 @@ const inputStyle = {
 
 export default function Wallet() {
   const navigate = useNavigate()
-  const { balance, myShares, transactions, user, isAuthenticated, fetchTransactions, fetchBalance, fetchMyShares, language } = useStore()
+  const { balance, contracts, transactions, user, isAuthenticated, fetchTransactions, fetchBalance, fetchContracts, language } = useStore()
   const [showTopup, setShowTopup] = useState(false)
   const [showWithdraw, setShowWithdraw] = useState(false)
   const [amount, setAmount] = useState('')
@@ -63,11 +64,16 @@ export default function Wallet() {
   const t = useT(language)
 
   useEffect(() => {
-    if (isAuthenticated && user) { fetchBalance(); fetchTransactions(); fetchMyShares() }
+    if (isAuthenticated && user) { fetchBalance(); fetchTransactions(); fetchContracts() }
   }, [isAuthenticated, user])
 
-  const frozenAmount = myShares.reduce((sum, x) => sum + (Number(x.purchase_price_tiyin) || 0), 0)
-  const expectedPayout = frozenAmount * 0.15
+  // «Заморожено» — деньги, вложенные в живые договоры: вернуть их
+  // можно только продав животное, свободными они не считаются
+  const active = contracts.filter(c => c.status === 'active')
+  const frozenAmount = active.reduce((sum, c) => sum + (Number(c.principal_tiyin) || 0), 0)
+  const expectedPayout = active
+    .filter(c => c.model_type === 'investment')
+    .reduce((sum, c) => sum + (Number(c.summary?.net) || 0), 0)
 
   const filtered = filter === 'all' ? transactions : transactions.filter(tx => tx.type === filter)
 
@@ -133,43 +139,54 @@ export default function Wallet() {
               </div>
             </div>
             <div style={{ fontWeight: 700, color: txColor(txItem.type) }}>
-              {txSign(txItem.type)}{formatSum(txItem.amount_tiyin, language)}
+              {txSign(txItem.type)}{formatSum(Math.abs(Number(txItem.amount_tiyin)), language)}
             </div>
           </div>
         ))}
       </div>
 
-      {myShares.length > 0 && (
+      {active.length > 0 && (
         <div>
           <div style={{ fontSize: 11, color: C.textMuted, letterSpacing: 1, fontWeight: 600, marginBottom: 8 }}>
-            {t.wallet.expected_payouts_heading}
+            {t.contracts.title.toUpperCase()}
           </div>
-          {myShares.map(s => (
-            <div key={s.id} style={{
-              background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14,
-              padding: 14, marginBottom: 8,
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{s.sheep_name || s.name}</div>
-                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
-                    {t.wallet.share_label} {s.share_pct}%
+          {active.map(c => {
+            const due = Math.max(0,
+              (Number(c.boarding_accrued_tiyin) || 0) - (Number(c.boarding_paid_tiyin) || 0))
+            return (
+              <div key={c.id} style={{
+                background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14,
+                padding: 14, marginBottom: 8,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      {c['title_' + language] || c.title_en || c.animal_name}
+                    </div>
+                    <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                      {t.models[c.model_type]}
+                      {due > 0 && (
+                        <span style={{ color: C.gold }}> · {t.contracts.boardingDue} {formatSum(due, language)}</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.accent }}>
-                    {formatSum((s.purchase_price_tiyin || 0) * 0.15, language)}
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.accent }}>
+                      {formatSum(c.model_type === 'investment'
+                        ? (Number(c.summary?.net) || 0)
+                        : (Number(c.principal_tiyin) || 0), language)}
+                    </div>
+                    <button onClick={() => navigate('/contracts')} style={{
+                      marginTop: 4, background: 'none', border: 'none', color: C.textMuted,
+                      fontSize: 12, cursor: 'pointer', padding: 0,
+                    }}>
+                      {t.wallet.details}
+                    </button>
                   </div>
-                  <button onClick={() => navigate(`/sheep/${s.sheep_id}`)} style={{
-                    marginTop: 4, background: 'none', border: 'none', color: C.textMuted,
-                    fontSize: 12, cursor: 'pointer', padding: 0,
-                  }}>
-                    {t.wallet.details}
-                  </button>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

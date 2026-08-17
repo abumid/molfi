@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { useT } from '../i18n'
 import { api } from '../utils/api'
@@ -6,18 +6,24 @@ import { formatSum } from '../utils/format'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 
 export default function Profile() {
-  const { user, language, logout, balance, myShares, updateProfile } = useStore()
+  const { user, language, logout, balance, contracts, fetchContracts, updateProfile } = useStore()
   const t = useT(language)
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(user?.name || '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  // Статистика
-  const totalInvested = myShares.reduce(
-    (sum, s) => sum + (Number(s.purchase_price_tiyin) || 0), 0
-  )
-  const activeShares = myShares.filter(s => s.status === 'active').length
+  useEffect(() => { fetchContracts() }, [])
+
+  // Статистика по договорам, а не по долям — долевого владения больше нет
+  const active = contracts.filter(c => c.status === 'active')
+  const totalInvested = active.reduce((sum, c) => sum + (Number(c.principal_tiyin) || 0), 0)
+  const activeShares = active.length
+  // Сколько выйдет, если продать всё сегодня. Только инвестиции:
+  // у владения выход мясом, в деньгах он не считается.
+  const expectedNow = active
+    .filter(c => c.model_type === 'investment')
+    .reduce((sum, c) => sum + (Number(c.summary?.net) || 0), 0)
 
   const handleSaveName = async () => {
     if (!name.trim()) return
@@ -230,7 +236,7 @@ t.profile.name_placeholder}
           borderBottom: '1px solid var(--color-border)'
         }}>
           <span style={{ color: 'var(--color-text-muted)', fontSize: 14 }}>
-            {t.profile.active_shares}
+            {t.contracts.title}
           </span>
           <span style={{ color: 'var(--color-text)', fontWeight: 700, fontSize: 15 }}>
             {activeShares}
@@ -248,7 +254,7 @@ t.profile.name_placeholder}
             {t.profile.expected_payout}
           </span>
           <span style={{ color: 'var(--color-green-light)', fontWeight: 700, fontSize: 15 }}>
-            ~{formatSum(totalInvested * 0.15, language)}
+            {formatSum(expectedNow, language)}
           </span>
         </div>
       </div>

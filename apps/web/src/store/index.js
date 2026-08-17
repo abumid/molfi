@@ -14,8 +14,9 @@ export const useStore = create((set, get) => ({
   // до того, как сессия восстановится (гонка при загрузке/обновлении страницы).
   isLoading: true,
   language: localStorage.getItem(LANG_KEY) || 'en',
-  sheep: [],
-  myShares: [],
+  products: [],
+  contracts: [],
+  models: [],
   transactions: [],
   balance: 0,
 
@@ -26,7 +27,7 @@ export const useStore = create((set, get) => ({
 
   logout: () => {
     localStorage.removeItem(TOKEN_KEY)
-    set({ token: null, user: null, isAuthenticated: false, myShares: [], balance: 0, transactions: [] })
+    set({ token: null, user: null, isAuthenticated: false, contracts: [], balance: 0, transactions: [] })
   },
 
   restoreSession: async () => {
@@ -42,20 +43,27 @@ export const useStore = create((set, get) => ({
     }
   },
 
-  fetchSheep: async () => {
+  // Какие модели открыты — решает бэкенд через settings.models_enabled.
+  // Клиент не должен знать про существование выключенных.
+  fetchModels: async () => {
     try {
-      const data = await api.get('/sheep')
-      set({ sheep: data.sheep || [] })
+      const data = await api.get('/models')
+      set({ models: data.models || [] })
     } catch (e) { console.error(e) }
   },
 
-  fetchMyShares: async () => {
-    const { user, token } = get()
-    if (!user || !token) return
+  fetchProducts: async (model) => {
     try {
-      const data = await api.get(`/shares/user/${user.id}`)
-      set({ myShares: data.shares || [] })
-    } catch (e) { console.error('fetchMyShares error:', e.message) }
+      const data = await api.get('/products' + (model ? `?model=${model}` : ''))
+      set({ products: data.products || [] })
+    } catch (e) { console.error(e) }
+  },
+
+  fetchContracts: async () => {
+    try {
+      const data = await api.get('/contracts')
+      set({ contracts: data.contracts || [] })
+    } catch (e) { console.error(e) }
   },
 
   fetchBalance: async () => {

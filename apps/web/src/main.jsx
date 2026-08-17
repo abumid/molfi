@@ -11,7 +11,7 @@ try {
   console.warn('Telegram SDK init skipped:', e?.message)
 }
 
-// restoreSession()/fetchSheep() запускаются один раз внутри App.jsx (Layout) —
+// restoreSession()/fetchModels() запускаются один раз внутри App.jsx (Layout) —
 // раньше они дублировались здесь, из-за чего каждый запуск делал двойные
 // запросы к /auth/me и /sheep.
 

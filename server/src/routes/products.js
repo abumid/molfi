@@ -6,8 +6,8 @@ import { ALL_MODELS as MODELS, enabledModels } from '../utils/settings.js'
 
 const router = Router()
 
-// Животное подтягиваем LEFT JOIN'ом: у installment и fixed_income
-// animal_id пустой, INNER выкинул бы их из выдачи целиком.
+// Животное подтягиваем LEFT JOIN'ом: у installment animal_id пустой
+// до отгрузки, INNER выкинул бы такие офферы из выдачи целиком.
 const SELECT_PRODUCT = `
   SELECT p.*,
          a.name             AS animal_name,
@@ -16,6 +16,9 @@ const SELECT_PRODUCT = `
          a.current_weight_g AS animal_weight_g,
          a.photo_url        AS animal_photo_url,
          a.status           AS animal_status,
+         a.birth_date,
+         a.rfid_tag         AS animal_rfid_tag,
+         a.price_per_kg_tiyin,
          f.name             AS farm_name,
          f.location         AS farm_location
   FROM products p
@@ -27,13 +30,16 @@ const SELECT_PRODUCT = `
 // products_model_fields_check, но ловить 23514 и переводить его
 // в человеческий текст дороже, чем проверить заранее.
 const validate = (body) => {
-  const { model_type, animal_id, term_months, meat_weight_g, annual_rate_bp } = body
+  const { model_type, animal_id, price_tiyin, term_months, meat_weight_g } = body
   if (!MODELS.includes(model_type)) return 'model_type must be one of ' + MODELS.join(', ')
-  if (model_type === 'ownership' && !animal_id) return 'ownership requires animal_id'
+  // investment и ownership продают конкретное животное по цене
+  if (['investment', 'ownership'].includes(model_type)) {
+    if (!animal_id) return `${model_type} requires animal_id`
+    if (!price_tiyin) return `${model_type} requires price_tiyin`
+  }
+  // installment продаёт обещание мяса в срок
   if (model_type === 'installment' && (!term_months || !meat_weight_g))
     return 'installment requires term_months and meat_weight_g'
-  if (model_type === 'fixed_income' && (!term_months || !annual_rate_bp))
-    return 'fixed_income requires term_months and annual_rate_bp'
   return null
 }
 
@@ -110,7 +116,7 @@ router.post('/admin/products', requireAdmin, asyncHandler(async (req, res) => {
     model_type, animal_id, farm_id,
     title_en, title_ru, title_uz,
     description_en, description_ru, description_uz, photo_url,
-    price_tiyin, min_amount_tiyin, term_months, annual_rate_bp, meat_weight_g,
+    price_tiyin, term_months, meat_weight_g, boarding_fee_monthly_tiyin,
     slots_total, status, starts_at, ends_at,
   } = req.body
 
@@ -119,17 +125,20 @@ router.post('/admin/products', requireAdmin, asyncHandler(async (req, res) => {
        model_type, animal_id, farm_id,
        title_en, title_ru, title_uz,
        description_en, description_ru, description_uz, photo_url,
-       price_tiyin, min_amount_tiyin, term_months, annual_rate_bp, meat_weight_g,
+       price_tiyin, term_months, meat_weight_g, boarding_fee_monthly_tiyin,
        slots_total, status, starts_at, ends_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
      RETURNING *`,
     [
       model_type, animal_id || null, farm_id || null,
       title_en || null, title_ru || null, title_uz || null,
       description_en || null, description_ru || null, description_uz || null, photo_url || null,
-      price_tiyin || 0, min_amount_tiyin || null, term_months || null,
-      annual_rate_bp || null, meat_weight_g || null,
-      slots_total || 1, status || 'draft', starts_at || null, ends_at || null,
+      price_tiyin || 0, term_months || null, meat_weight_g || null,
+      boarding_fee_monthly_tiyin || null,
+      // Оффер на конкретное животное всегда на одно место: барана
+      // нельзя продать дважды, сколько ни поставь в форме
+      ['investment', 'ownership'].includes(model_type) ? 1 : (slots_total || 1),
+      status || 'draft', starts_at || null, ends_at || null,
     ]
   )).rows[0]
 
@@ -154,18 +163,19 @@ router.put('/admin/products/:id', requireAdmin, asyncHandler(async (req, res) =>
        model_type=$2, animal_id=$3, farm_id=$4,
        title_en=$5, title_ru=$6, title_uz=$7,
        description_en=$8, description_ru=$9, description_uz=$10, photo_url=$11,
-       price_tiyin=$12, min_amount_tiyin=$13, term_months=$14,
-       annual_rate_bp=$15, meat_weight_g=$16,
-       slots_total=$17, status=$18, starts_at=$19, ends_at=$20
+       price_tiyin=$12, term_months=$13, meat_weight_g=$14,
+       boarding_fee_monthly_tiyin=$15,
+       slots_total=$16, status=$17, starts_at=$18, ends_at=$19
      WHERE id=$1 RETURNING *`,
     [
       req.params.id,
       merged.model_type, merged.animal_id || null, merged.farm_id || null,
       merged.title_en, merged.title_ru, merged.title_uz,
       merged.description_en, merged.description_ru, merged.description_uz, merged.photo_url,
-      merged.price_tiyin || 0, merged.min_amount_tiyin, merged.term_months,
-      merged.annual_rate_bp, merged.meat_weight_g,
-      merged.slots_total, merged.status, merged.starts_at, merged.ends_at,
+      merged.price_tiyin || 0, merged.term_months, merged.meat_weight_g,
+      merged.boarding_fee_monthly_tiyin || null,
+      ['investment', 'ownership'].includes(merged.model_type) ? 1 : merged.slots_total,
+      merged.status, merged.starts_at, merged.ends_at,
     ]
   )).rows[0]
 

@@ -5,8 +5,9 @@ import BottomNav from './components/layout/BottomNav'
 import Onboarding from './pages/Onboarding'
 import Auth from './pages/Auth'
 import Catalog from './pages/Catalog'
-import SheepDetail from './pages/SheepDetail'
-import BuyShare from './pages/BuyShare'
+import ProductDetail from './pages/ProductDetail'
+import Checkout from './pages/Checkout'
+import Contracts from './pages/Contracts'
 import Wallet from './pages/Wallet'
 import Profile from './pages/Profile'
 
@@ -37,13 +38,13 @@ function Layout() {
   const location = useLocation()
   const { isAuthenticated, isLoading } = useStore()
   const restoreSession = useStore(s => s.restoreSession)
-  const fetchSheep = useStore(s => s.fetchSheep)
+  const fetchModels = useStore(s => s.fetchModels)
 
   // Единственное место, где восстанавливается сессия и загружается каталог —
   // раньше это же самое вызывалось повторно в main.jsx при старте приложения,
   // из-за чего /auth/me и /sheep запрашивались дважды при каждом запуске.
   useEffect(() => {
-    restoreSession().finally(() => fetchSheep())
+    restoreSession().finally(() => fetchModels())
   }, [])
 
   return (
@@ -54,8 +55,9 @@ function Layout() {
         } />
         <Route path="/auth" element={<Auth />} />
         <Route path="/catalog" element={<PrivateRoute><Catalog /></PrivateRoute>} />
-        <Route path="/sheep/:id" element={<PrivateRoute><SheepDetail /></PrivateRoute>} />
-        <Route path="/sheep/:id/buy" element={<PrivateRoute><BuyShare /></PrivateRoute>} />
+        <Route path="/product/:id" element={<PrivateRoute><ProductDetail /></PrivateRoute>} />
+        <Route path="/product/:id/checkout" element={<PrivateRoute><Checkout /></PrivateRoute>} />
+        <Route path="/contracts" element={<PrivateRoute><Contracts /></PrivateRoute>} />
         <Route path="/wallet" element={<PrivateRoute><Wallet /></PrivateRoute>} />
         <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
       </Routes>
