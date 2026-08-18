@@ -4,6 +4,7 @@ import { useStore } from './store'
 import { useT } from './i18n'
 import BottomNav from './components/layout/BottomNav'
 import Landing from './pages/Landing'
+import Legal from './pages/Legal'
 import Onboarding from './pages/Onboarding'
 import Auth from './pages/Auth'
 import Catalog from './pages/Catalog'
@@ -92,6 +93,10 @@ function Layout() {
             : <Landing />
         } />
         <Route path="/auth" element={<Auth />} />
+        {/* Оферта и приватность — публичные: на них ссылается подвал
+            лендинга, который читают до регистрации */}
+        <Route path="/offer" element={<Legal doc="offer" />} />
+        <Route path="/privacy" element={<Legal doc="privacy" />} />
         {/* Каталог закрыт: смотреть предложения можно только после входа.
             PrivateRoute запоминает, куда человек шёл, и вернёт его туда
             же после логина — иначе он попадает в каталог, забыв, какую

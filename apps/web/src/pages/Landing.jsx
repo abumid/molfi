@@ -5,6 +5,13 @@ import { useL } from '../i18n/landing'
 import MolfiLogo from '../components/Logo'
 
 const THEME_KEY = 'molfi_landing_theme'
+
+// Ссылка внутри приложения — кнопка, а не <a href>: обычная ссылка
+// перезагрузила бы весь бандл вместо перехода по роутеру
+const link = (color) => ({
+  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+  color, fontSize: 'inherit', fontFamily: 'Inter, sans-serif', textDecoration: 'underline',
+})
 const TELEGRAM = 'https://t.me/molfi_bot'
 
 const SOCIAL = [
@@ -174,7 +181,9 @@ export default function Landing() {
             а не только в оферте: её открывают уже после решения */}
         <p style={{ fontSize: 12, color: S.dim, margin: '14px 0 0', lineHeight: 1.55 }}>
           {L.models.disclaimer}{' '}
-          <a href="/offer" style={{ color: S.accent }}>{L.models.offerLink}</a>.
+          <button onClick={() => navigate('/offer')} style={link(S.accent)}>
+            {L.models.offerLink}
+          </button>.
         </p>
       </div>
 
@@ -262,9 +271,11 @@ export default function Landing() {
             display: 'flex', gap: 18, justifyContent: 'center', marginTop: 22,
             flexWrap: 'wrap', fontSize: 12,
           }}>
-            <a href="/offer" style={{ color: S.muted }}>{L.footer.offer}</a>
-            <a href="/privacy" style={{ color: S.muted }}>{L.footer.privacy}</a>
-            <a href={`mailto:hello@molfi.uz`} style={{ color: S.muted }}>{L.footer.contacts}</a>
+            <button onClick={() => navigate('/offer')} style={link(S.muted)}>{L.footer.offer}</button>
+            <button onClick={() => navigate('/privacy')} style={link(S.muted)}>{L.footer.privacy}</button>
+            <a href="mailto:hello@molfi.uz" style={{ color: S.muted, textDecoration: 'none' }}>
+              {L.footer.contacts}
+            </a>
           </div>
 
           <div style={{
