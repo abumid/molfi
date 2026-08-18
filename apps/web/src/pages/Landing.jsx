@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store'
 import { useL } from '../i18n/landing'
 import MolfiLogo from '../components/Logo'
+import { store as ls, prefersLight } from '../utils/storage'
 
 const THEME_KEY = 'molfi_landing_theme'
 
@@ -38,14 +39,12 @@ export default function Landing() {
   // Тема: сохранённый выбор важнее системного, но при первом заходе
   // спрашивать нечего — берём то, что человек уже настроил в системе
   const [light, setLight] = useState(() => {
-    const saved = localStorage.getItem(THEME_KEY)
-    if (saved) return saved === 'light'
-    return typeof window !== 'undefined'
-      && window.matchMedia?.('(prefers-color-scheme: light)').matches
+    const saved = ls.get(THEME_KEY)
+    return saved ? saved === 'light' : prefersLight()
   })
 
   useEffect(() => {
-    localStorage.setItem(THEME_KEY, light ? 'light' : 'dark')
+    ls.set(THEME_KEY, light ? 'light' : 'dark')
   }, [light])
 
   const toApp = () => navigate(isAuthenticated ? '/catalog' : '/auth')

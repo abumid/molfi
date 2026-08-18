@@ -369,4 +369,167 @@ router.get('/admin/payments', requireAdmin, asyncHandler(async (req, res) => {
   ok(res, { payments })
 }))
 
+// ─────────────────────────────────────────────────────────────
+// Заявки на пополнение и вывод
+//
+// Пока Click и Payme не подключены, деньги двигает админ. Клиент
+// оставляет заявку с суммой, админ одобряет — и только в этот момент
+// создаётся транзакция и меняется баланс. Заявка сама по себе на
+// баланс не влияет: иначе человек «пополнил» бы кошелёк, ничего
+// не заплатив.
+// ─────────────────────────────────────────────────────────────
+
+const REQUEST_KINDS = ['topup', 'withdrawal']
+
+// Защита от опечатки в лишний ноль и от заявок на копейку
+const MIN_REQUEST_TIYIN = 1000 * 100      // 1 000 сум
+const MAX_REQUEST_TIYIN = 500_000_000 * 100 // 500 млн сум
+
+router.post('/payment-requests', requireAuth, asyncHandler(async (req, res) => {
+  const { kind, amount_tiyin, note } = req.body
+  if (!REQUEST_KINDS.includes(kind)) return fail(res, 'kind must be topup or withdrawal')
+
+  const amount = Math.round(Number(amount_tiyin))
+  if (!Number.isFinite(amount) || amount < MIN_REQUEST_TIYIN) return fail(res, 'amount_too_small')
+  if (amount > MAX_REQUEST_TIYIN) return fail(res, 'amount_too_large')
+
+  // Одна незакрытая заявка на вид: иначе человек накидает десяток
+  // одинаковых, а админ будет гадать, какую одобрять
+  const pending = (await pool.query(
+    `SELECT id FROM payment_requests WHERE user_id=$1 AND kind=$2 AND status='pending'`,
+    [req.user.id, kind]
+  )).rows[0]
+  if (pending) return fail(res, 'request_already_pending')
+
+  // Вывести больше, чем лежит свободного, нельзя — проверяем сразу,
+  // чтобы человек не ждал отказа сутки
+  if (kind === 'withdrawal') {
+    const wallet = (await pool.query(
+      `SELECT balance_tiyin FROM wallet_balances WHERE user_id=$1`, [req.user.id]
+    )).rows[0]
+    if (!wallet || Number(wallet.balance_tiyin) < amount) return fail(res, 'insufficient_balance')
+  }
+
+  const request = (await pool.query(
+    `INSERT INTO payment_requests (user_id, kind, amount_tiyin, note)
+     VALUES ($1,$2,$3,$4) RETURNING *`,
+    [req.user.id, kind, amount, note?.slice(0, 300) || null]
+  )).rows[0]
+
+  res.status(201).json({ success: true, request })
+}))
+
+router.get('/payment-requests', requireAuth, asyncHandler(async (req, res) => {
+  const requests = (await pool.query(
+    `SELECT * FROM payment_requests WHERE user_id=$1 ORDER BY created_at DESC LIMIT 20`,
+    [req.user.id]
+  )).rows
+  ok(res, { requests })
+}))
+
+/** Отменить свою заявку, пока её не рассмотрели. */
+router.delete('/payment-requests/:id', requireAuth, asyncHandler(async (req, res) => {
+  const deleted = (await pool.query(
+    `DELETE FROM payment_requests
+     WHERE id=$1 AND user_id=$2 AND status='pending' RETURNING id`,
+    [req.params.id, req.user.id]
+  )).rows[0]
+  if (!deleted) return fail(res, 'not_found_or_already_decided', 404)
+  ok(res, { deleted: deleted.id })
+}))
+
+router.get('/admin/payment-requests', requireAdmin, asyncHandler(async (req, res) => {
+  const { status } = req.query
+  const requests = (await pool.query(
+    `SELECT r.*, u.phone AS user_phone, u.name AS user_name,
+            COALESCE(w.balance_tiyin, 0) AS user_balance_tiyin
+     FROM payment_requests r
+     JOIN users u ON u.id = r.user_id
+     LEFT JOIN wallet_balances w ON w.user_id = r.user_id
+     WHERE ($1::text IS NULL OR r.status = $1)
+     ORDER BY (r.status = 'pending') DESC, r.created_at DESC
+     LIMIT 200`,
+    [status || null]
+  )).rows
+  ok(res, { requests })
+}))
+
+router.post('/admin/payment-requests/:id/approve', requireAdmin, asyncHandler(async (req, res) => {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    // Блокируем заявку: два админа могут нажать «одобрить» одновременно,
+    // и без замка деньги начислятся дважды
+    const request = (await client.query(
+      `SELECT * FROM payment_requests WHERE id=$1 FOR UPDATE`, [req.params.id]
+    )).rows[0]
+    if (!request) { await client.query('ROLLBACK'); return fail(res, 'not_found', 404) }
+    if (request.status !== 'pending') {
+      await client.query('ROLLBACK')
+      return fail(res, `already_${request.status}`)
+    }
+
+    const amount = Number(request.amount_tiyin)
+    const isTopup = request.kind === 'topup'
+
+    await client.query(
+      `INSERT INTO wallet_balances (user_id, balance_tiyin) VALUES ($1, 0)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [request.user_id]
+    )
+    const wallet = (await client.query(
+      `SELECT balance_tiyin FROM wallet_balances WHERE user_id=$1 FOR UPDATE`,
+      [request.user_id]
+    )).rows[0]
+
+    // Баланс мог упасть за время ожидания — покупкой или другой выплатой
+    if (!isTopup && Number(wallet.balance_tiyin) < amount) {
+      await client.query('ROLLBACK')
+      return fail(res, 'insufficient_balance')
+    }
+
+    await client.query(
+      `UPDATE wallet_balances SET balance_tiyin = balance_tiyin + $1, updated_at = NOW()
+       WHERE user_id = $2`,
+      [isTopup ? amount : -amount, request.user_id]
+    )
+
+    const tx = (await client.query(
+      `INSERT INTO transactions (user_id, type, amount_tiyin, description)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [request.user_id, isTopup ? 'topup' : 'withdrawal',
+       isTopup ? amount : -amount,
+       `Payment request #${request.id} approved`]
+    )).rows[0]
+
+    const updated = (await client.query(
+      `UPDATE payment_requests
+       SET status='approved', decided_at=NOW(), decided_by=$2,
+           admin_comment=$3, transaction_id=$4
+       WHERE id=$1 RETURNING *`,
+      [request.id, req.user.id, req.body?.comment?.slice(0, 300) || null, tx.id]
+    )).rows[0]
+
+    await client.query('COMMIT')
+    ok(res, { request: updated, transaction: tx })
+  } catch (e) {
+    await client.query('ROLLBACK')
+    throw e
+  } finally {
+    client.release()
+  }
+}))
+
+router.post('/admin/payment-requests/:id/reject', requireAdmin, asyncHandler(async (req, res) => {
+  const updated = (await pool.query(
+    `UPDATE payment_requests
+     SET status='rejected', decided_at=NOW(), decided_by=$2, admin_comment=$3
+     WHERE id=$1 AND status='pending' RETURNING *`,
+    [req.params.id, req.user.id, req.body?.comment?.slice(0, 300) || null]
+  )).rows[0]
+  if (!updated) return fail(res, 'not_found_or_already_decided', 404)
+  ok(res, { request: updated })
+}))
+
 export default router

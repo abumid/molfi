@@ -4,6 +4,7 @@ import { useStore } from '../store'
 import { useT } from '../i18n'
 import { formatSum, formatDate } from '../utils/format'
 import BalanceCard from '../components/BalanceCard'
+import { api } from '../utils/api'
 
 const C = {
   bg: 'var(--color-bg)', surface: 'var(--color-surface)', surface2: 'var(--color-surface-2)', border: 'var(--color-border)',
@@ -57,21 +58,63 @@ const inputStyle = {
 
 export default function Wallet() {
   const navigate = useNavigate()
-  const { contracts, transactions, user, isAuthenticated, fetchTransactions, fetchBalance, fetchContracts, language } = useStore()
+  const {
+    contracts, transactions, paymentRequests, user, isAuthenticated,
+    fetchTransactions, fetchBalance, fetchContracts, fetchPaymentRequests, language,
+  } = useStore()
   const [showTopup, setShowTopup] = useState(false)
   const [showWithdraw, setShowWithdraw] = useState(false)
   const [amount, setAmount] = useState('')
   const [filter, setFilter] = useState('all')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
   const t = useT(language)
 
   useEffect(() => {
-    if (isAuthenticated && user) { fetchBalance(); fetchTransactions(); fetchContracts() }
+    if (isAuthenticated && user) {
+      fetchBalance(); fetchTransactions(); fetchContracts(); fetchPaymentRequests()
+    }
   }, [isAuthenticated, user])
 
   const active = contracts.filter(c => c.status === 'active')
   const filtered = filter === 'all' ? transactions : transactions.filter(tx => tx.type === filter)
 
-  const handlePayMethod = () => alert(t.wallet.coming_soon)
+  const pending = paymentRequests.filter(r => r.status === 'pending')
+
+  /**
+   * Пока Click и Payme не подключены, кнопка не притворяется оплатой:
+   * она оставляет заявку, админ её одобряет, и только тогда деньги
+   * двигаются. Кнопка, которая молча ничего не делает, читается как
+   * поломка приложения.
+   */
+  const submit = async (kind) => {
+    const tiyin = Math.round(Number(amount) * 100)
+    if (!tiyin) return setError(t.wallet.amountRequired)
+    setBusy(true); setError(null)
+    try {
+      await api.post('/payment-requests', { kind, amount_tiyin: tiyin })
+      await Promise.all([fetchPaymentRequests(), fetchBalance()])
+      setAmount('')
+      setShowTopup(false); setShowWithdraw(false)
+    } catch (e) {
+      const m = String(e.message)
+      setError(
+        m.includes('request_already_pending') ? t.wallet.alreadyPending
+        : m.includes('insufficient_balance') ? t.checkout.notEnough
+        : m.includes('amount_too_small') ? t.wallet.amountTooSmall
+        : m.includes('amount_too_large') ? t.wallet.amountTooLarge
+        : t.common.error
+      )
+    }
+    setBusy(false)
+  }
+
+  const cancelRequest = async (id) => {
+    try {
+      await api.del(`/payment-requests/${id}`)
+      await fetchPaymentRequests()
+    } catch { /* заявку уже рассмотрели — список обновится сам */ }
+  }
 
   return (
     <div style={{ padding: '20px 16px 90px', fontFamily: 'Inter, sans-serif', color: C.text }}>
@@ -87,6 +130,36 @@ export default function Wallet() {
           onWithdraw={() => setShowWithdraw(true)}
         />
       </div>
+
+      {pending.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          {pending.map(r => (
+            <div key={r.id} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+              background: C.surface, border: `1px solid ${C.gold}`, borderRadius: 14,
+              padding: '12px 14px', marginBottom: 8,
+            }}>
+              <div>
+                <div style={{ fontSize: 13, color: C.gold }}>
+                  {r.kind === 'topup' ? t.wallet.topup : t.wallet.withdraw} · {t.wallet.statusPending}
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>
+                  {formatSum(r.amount_tiyin, language)}
+                </div>
+              </div>
+              <button
+                onClick={() => cancelRequest(r.id)}
+                style={{
+                  background: 'none', border: `1px solid ${C.border}`, borderRadius: 10,
+                  color: C.textMuted, fontSize: 12, padding: '8px 14px', cursor: 'pointer',
+                }}
+              >
+                {t.common.cancel}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' }}>
         {FILTERS.map(([key, labelKey]) => (
@@ -181,20 +254,20 @@ export default function Wallet() {
             value={amount} onChange={e => setAmount(e.target.value)} type="number"
             placeholder={t.wallet.amount_placeholder} style={inputStyle}
           />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
-            <button onClick={handlePayMethod} style={{
-              height: 48, borderRadius: 12, border: 'none', background: '#0066FF',
-              color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer',
-            }}>
-              Click Pay
-            </button>
-            <button onClick={handlePayMethod} style={{
-              height: 48, borderRadius: 12, border: 'none', background: '#00AAFF',
-              color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer',
-            }}>
-              Payme
-            </button>
-          </div>
+          <p style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5, margin: '12px 0 0' }}>
+            {t.wallet.requestNote}
+          </p>
+          {error && <p style={{ color: C.red, fontSize: 13, margin: '8px 0 0' }}>{error}</p>}
+          <button
+            onClick={() => submit('topup')} disabled={busy}
+            style={{
+              marginTop: 14, width: '100%', height: 48, borderRadius: 12, border: 'none',
+              background: C.accent, color: C.bg, fontWeight: 700, fontSize: 15,
+              cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? .6 : 1,
+            }}
+          >
+            {busy ? '…' : t.wallet.sendRequest}
+          </button>
         </ModalSheet>
       )}
 
@@ -207,11 +280,19 @@ export default function Wallet() {
             value={amount} onChange={e => setAmount(e.target.value)} type="number"
             placeholder={t.wallet.amount_placeholder} style={inputStyle}
           />
-          <button onClick={handlePayMethod} style={{
-            marginTop: 16, width: '100%', height: 48, borderRadius: 12, border: 'none',
-            background: C.accent, color: C.bg, fontWeight: 700, fontSize: 15, cursor: 'pointer',
-          }}>
-            {t.wallet.withdraw}
+          <p style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5, margin: '12px 0 0' }}>
+            {t.wallet.requestNote}
+          </p>
+          {error && <p style={{ color: C.red, fontSize: 13, margin: '8px 0 0' }}>{error}</p>}
+          <button
+            onClick={() => submit('withdrawal')} disabled={busy}
+            style={{
+              marginTop: 14, width: '100%', height: 48, borderRadius: 12, border: 'none',
+              background: C.accent, color: C.bg, fontWeight: 700, fontSize: 15,
+              cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? .6 : 1,
+            }}
+          >
+            {busy ? '…' : t.wallet.sendRequest}
           </button>
         </ModalSheet>
       )}

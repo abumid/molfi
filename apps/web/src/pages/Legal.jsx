@@ -4,6 +4,7 @@ import { useStore } from '../store'
 import { useT } from '../i18n'
 import { useLegal } from '../i18n/legal'
 import MolfiLogo from '../components/Logo'
+import { store as ls, prefersLight } from '../utils/storage'
 
 const THEME_KEY = 'molfi_landing_theme'
 
@@ -23,14 +24,12 @@ export default function Legal({ doc }) {
   const L = useLegal(language, doc)
 
   const [light, setLight] = useState(() => {
-    const saved = localStorage.getItem(THEME_KEY)
-    if (saved) return saved === 'light'
-    return typeof window !== 'undefined'
-      && window.matchMedia?.('(prefers-color-scheme: light)').matches
+    const saved = ls.get(THEME_KEY)
+    return saved ? saved === 'light' : prefersLight()
   })
 
   useEffect(() => {
-    localStorage.setItem(THEME_KEY, light ? 'light' : 'dark')
+    ls.set(THEME_KEY, light ? 'light' : 'dark')
   }, [light])
 
   const S = {

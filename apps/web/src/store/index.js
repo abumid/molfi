@@ -1,11 +1,12 @@
 import { create } from 'zustand'
 import { api } from '../utils/api'
+import { store as ls } from '../utils/storage'
 
 const TOKEN_KEY = 'molfi_token'
 const LANG_KEY = 'molfi_lang'
 
 export const useStore = create((set) => ({
-  token: localStorage.getItem(TOKEN_KEY) || null,
+  token: ls.get(TOKEN_KEY) || null,
   user: null,
   isAuthenticated: false,
   // Начинаем с true: пока restoreSession() не отработает (успешно или нет),
@@ -13,32 +14,33 @@ export const useStore = create((set) => ({
   // PrivateRoute успевает перекинуть уже вошедшего пользователя на /auth
   // до того, как сессия восстановится (гонка при загрузке/обновлении страницы).
   isLoading: true,
-  language: localStorage.getItem(LANG_KEY) || 'en',
+  language: ls.get(LANG_KEY) || 'en',
   products: [],
   contracts: [],
   models: [],
   transactions: [],
+  paymentRequests: [],
   balance: 0,
 
   login: (token, user) => {
-    localStorage.setItem(TOKEN_KEY, token)
+    ls.set(TOKEN_KEY, token)
     set({ token, user, isAuthenticated: true })
   },
 
   logout: () => {
-    localStorage.removeItem(TOKEN_KEY)
+    ls.remove(TOKEN_KEY)
     set({ token: null, user: null, isAuthenticated: false, contracts: [], balance: 0, transactions: [] })
   },
 
   restoreSession: async () => {
-    const token = localStorage.getItem(TOKEN_KEY)
+    const token = ls.get(TOKEN_KEY)
     if (!token) { set({ isLoading: false }); return }
     set({ isLoading: true })
     try {
       const data = await api.get('/auth/me')
       set({ token, user: data.user, isAuthenticated: true, isLoading: false })
     } catch {
-      localStorage.removeItem(TOKEN_KEY)
+      ls.remove(TOKEN_KEY)
       set({ token: null, isAuthenticated: false, isLoading: false })
     }
   },
@@ -73,6 +75,15 @@ export const useStore = create((set) => ({
     } catch (e) { console.error(e) }
   },
 
+  // Заявки на пополнение и вывод. Пока Click и Payme не подключены,
+  // деньги двигает админ, а клиент видит, на какой стадии его просьба.
+  fetchPaymentRequests: async () => {
+    try {
+      const data = await api.get('/payment-requests')
+      set({ paymentRequests: data.requests || [] })
+    } catch (e) { console.error(e) }
+  },
+
   fetchTransactions: async () => {
     try {
       const data = await api.get('/wallet/transactions')
@@ -81,7 +92,7 @@ export const useStore = create((set) => ({
   },
 
   setLanguage: (lang) => {
-    localStorage.setItem(LANG_KEY, lang)
+    ls.set(LANG_KEY, lang)
     set({ language: lang })
   },
 

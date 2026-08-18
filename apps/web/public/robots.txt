@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /$
+Allow: /offer
+Allow: /privacy
+
+# Кабинет индексировать незачем: он за формой входа и краулер увидит
+# только экран авторизации
+Disallow: /auth
+Disallow: /catalog
+Disallow: /product
+Disallow: /contracts
+Disallow: /wallet
+Disallow: /profile
+
+Sitemap: https://molfi.uz/sitemap.xml

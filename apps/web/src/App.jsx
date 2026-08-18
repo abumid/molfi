@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useStore } from './store'
+import { store as ls } from './utils/storage'
 import { useT } from './i18n'
 import BottomNav from './components/layout/BottomNav'
 import Landing from './pages/Landing'
@@ -75,7 +76,7 @@ function Layout() {
   useEffect(() => {
     restoreSession().finally(() => {
       fetchModels()
-      if (localStorage.getItem('molfi_token')) fetchContracts()
+      if (ls.get('molfi_token')) fetchContracts()
     })
   }, [])
 

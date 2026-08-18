@@ -33,6 +33,7 @@ export default function Layout({ children, title }) {
       items: [
         { path: '/users', icon: '👥', label: t('nav.users') },
         { path: '/transactions', icon: '💰', label: t('nav.transactions') },
+        { path: '/requests', icon: '💸', label: t('nav.requests') },
         { path: '/settings', icon: '⚙️', label: t('nav.settings') },
       ],
     },

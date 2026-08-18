@@ -10,6 +10,7 @@ import Products from './pages/Products'
 import Contracts from './pages/Contracts'
 import Payments from './pages/Payments'
 import Transactions from './pages/Transactions'
+import Requests from './pages/Requests'
 import Activity from './pages/Activity'
 import Settings from './pages/Settings'
 
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="/payments" element={<Guard><Payments /></Guard>} />
         <Route path="/activity" element={<Guard><Activity /></Guard>} />
         <Route path="/transactions" element={<Guard><Transactions /></Guard>} />
+        <Route path="/requests" element={<Guard><Requests /></Guard>} />
         <Route path="/settings" element={<Guard><Settings /></Guard>} />
         {/* Старые адреса: /sheep и /shares из v1 */}
         <Route path="/sheep" element={<Navigate to="/animals" replace />} />

@@ -1,119 +1,104 @@
 # Molfi
 
-Livestock investment platform for Uzbekistan. Users buy fractional shares in individual sheep, follow their growth (weight, RFID tag, farm activity log), and receive a payout when the animal is sold.
+Livestock investment platform for Uzbekistan. A person buys a specific animal on a working farm in the Tashkent region, follows its weight from the app, and decides when to exit — taking the sale proceeds or the meat.
 
-Full-stack monorepo: React client, React admin panel, Express/PostgreSQL API, Telegram bot integration.
+*Mol* is Uzbek for livestock, and for wealth.
 
-> Built solo — frontend, backend, database schema and integrations.
+Full-stack monorepo: React client with a public landing page, React admin panel, Express/PostgreSQL API, Telegram bot.
+
+## Two models
+
+| | Investment | Ownership |
+|---|---|---|
+| What you buy | A specific animal | A specific animal |
+| Care fee | Accrues, deducted from the sale | 40,000 som per month from the wallet |
+| Exit | Sell, take the proceeds | Take it live or as meat |
+| Market risk | Yours | None — nothing is sold |
+
+There is no fixed-return model, and there never will be: livestock cannot deliver a guaranteed rate. Every figure the app shows is an estimate from current weight × price per kilogram, and it is labelled as such.
+
+A third model, `installment`, exists in the schema but is switched off through `settings.models_enabled`. Products and contracts of a disabled model never reach the catalogue and cannot be bought, even by direct link.
 
 ## Stack
 
 | Layer | Tech |
 |---|---|
-| Client | React 19, Vite, React Router 7, Zustand, Tailwind 4, `@telegram-apps/sdk` |
-| Admin | React 19, Vite, React Router 7, Zustand |
+| Client | React 19, Vite 7, React Router 7, Zustand 5 |
+| Admin | React 19, Vite 7, React Router 7, Zustand 5 |
 | API | Node.js, Express 5, PostgreSQL (`pg`), JWT, bcrypt |
 | Integrations | Telegram Bot API, Eskiz.uz SMS gateway |
 
-## Repository layout
+Three languages everywhere — English (default), Russian, Uzbek — through hand-rolled dictionaries, no runtime i18n dependency.
+
+## Layout
 
 ```
 molfi/
 ├── apps/
-│   ├── web/          # Investor-facing app (RU/UZ, Telegram Mini App ready)
+│   ├── web/                     Client + public landing (port 5173)
+│   │   ├── public/              Logos in WebP + PNG, robots.txt, sitemap.xml
+│   │   ├── scripts/prerender.mjs  Bakes the landing markup into dist/index.html
 │   │   └── src/
-│   │       ├── pages/        Onboarding, Auth, Catalog, SheepDetail, BuyShare, Wallet, Profile, Admin
-│   │       ├── components/   ui/ primitives + layout/BottomNav
-│   │       ├── store/        Zustand store
-│   │       ├── utils/api.js  Typed API client
-│   │       └── i18n/         RU + UZ dictionaries
-│   └── admin/        # Back-office panel
-│       └── src/pages/        Dashboard, Users, Sheep, Shares, Transactions, Activity, Login
-└── server/
+│   │       ├── pages/           Landing, Legal, Auth, Catalog, ProductDetail,
+│   │       │                    Checkout, Contracts, ContractDetail, Wallet, Profile
+│   │       ├── components/      BalanceCard, AnimalHero, WeightChart, ActivityFeed, ui/
+│   │       ├── i18n/            index.js (app), landing.js, legal.js
+│   │       └── utils/           api, format, animal, portfolio, storage, payments
+│   └── admin/                   Back-office (port 5174)
+│       └── src/pages/           Dashboard, Animals, Activity, Products, Contracts,
+│                                Payments, Users, Transactions, Requests, Settings
+└── server/                      API (port 3000)
     └── src/
-        ├── routes/       auth, sheep, shares, wallet, profile, activity, admin
-        ├── middleware/   requireAuth / requireAdmin (JWT)
-        ├── db/           pool, migrate (schema), seed
-        ├── services/     telegramBot.js
-        └── utils/        money, calculations, sms, response
+        ├── routes/              auth, animals, products, contracts, payments,
+        │                        activity, wallet, profile, admin
+        ├── jobs/                accrueBoarding, markOverdue
+        ├── db/                  pool, migrate, seed.demo
+        ├── services/            telegramBot
+        └── utils/               calculations, settings, sms, response
 ```
 
-## Domain logic
+## Money
 
-**Money.** All amounts are stored as integers in *tiyin* (1 UZS = 100 tiyin) to avoid floating-point drift. Conversion and formatting live in `server/src/utils/money.js`.
+All amounts are integer **tiyin** — 1 som = 100 tiyin. Rates are basis points: 300 = 3%. Floats never touch money.
 
-**Payouts.** A sheep has a live weight (grams) and a price per kg. Gross revenue is `weight × price_per_kg`; the platform takes 10%, and the remaining investor pool is split by share percentage:
-
-```js
-const grossRevenue = weightKg * pricePerKg
-const investorPool = grossRevenue - grossRevenue * 0.10
-return Math.round(investorPool * (sharePct / 100))
-```
-
-`calcProjectedPayout` runs against current weight (what the investor sees in the app), `calcFinalPayout` prefers the real sale price once the animal is sold. See `server/src/utils/calculations.js`.
-
-**Auth.** Phone-first. `check-phone` → `send-sms` (Eskiz.uz) → `verify-sms` → `register`/`login`, plus a `telegram-login` path for users entering through the bot. Passwords are bcrypt-hashed; sessions are JWT with a `role` claim consumed by `requireAdmin`.
-
-## Database
-
-PostgreSQL, 10 tables created idempotently by `server/src/db/migrate.js`:
-
-`users` · `sms_codes` · `farms` · `sheep` · `weight_records` · `shares` · `wallet_balances` · `transactions` · `videos` · `activity`
-
-## API
-
-Base URL `/api`. Routes marked 🔒 require a JWT, 🛡 require `role = admin`.
-
-**Auth** — `POST /auth/check-phone`, `/send-sms`, `/verify-sms`, `/register`, `/login`, `/forgot-password`, `/reset-password`, `/telegram-login` · 🔒 `GET /auth/me`
-
-**Sheep** — `GET /sheep`, `GET /sheep/:id` · 🛡 `POST /sheep/:id/weight`
-
-**Shares** — 🔒 `POST /shares/buy`, `GET /shares/user/:id`
-
-**Wallet** — 🔒 `GET /wallet/balance`, `POST /wallet/topup`, `GET /wallet/transactions`
-
-**Activity** — `GET /sheep/:id/activity` · 🛡 `POST /sheep/:id/activity`, `PUT /activity/:id`, `DELETE /activity/:id`
-
-**Profile** — 🔒 `PUT /profile/update`
-
-**Admin** — 🛡 CRUD over sheep (incl. `POST /admin/sheep/:id/sell` · `/unsell`), users, balances, shares and transactions.
-
-Every handler returns a uniform envelope via `utils/response.js`:
-
-```json
-{ "success": true, "data": { } }
-{ "success": false, "error": "Unauthorized" }
-```
+Fees live in the `settings` table, not in code. Today the purchase fee and both profit fees are 0; the only revenue is the monthly care fee. Changing a rate is a settings edit, not a deploy.
 
 ## Running locally
 
 ```bash
-# 1. Database
 createdb molfi
 
-# 2. API
-cd server
-npm install
-cp .env.example .env      # fill in DB creds, JWT_SECRET, BOT_TOKEN
+cd server && npm install
+cp .env.example .env          # fill in DB creds, JWT_SECRET, BOT_TOKEN
 npm run migrate
-npm run seed
-npm run dev               # http://localhost:3000
+npm run seed                  # 12 demo offers; remove with: npm run seed -- --clean
+npm run dev                   # http://localhost:3000
 
-# 3. Client
-cd apps/web
-npm install
-cp .env.example .env
-npm run dev               # http://localhost:5173
-
-# 4. Admin panel
-cd apps/admin
-npm install
-cp .env.example .env
-npm run dev               # http://localhost:5174
+cd apps/web && npm install && cp .env.example .env && npm run dev    # :5173
+cd apps/admin && npm install && cp .env.example .env && npm run dev  # :5174
 ```
+
+The demo seed marks everything it creates with an RFID prefix `DEMO-` and only ever deletes its own rows. It refuses to run the cleanup if a demo animal already has a contract.
+
+## Scripts
+
+**server** — `dev`, `start`, `migrate`, `seed`, `smoke`, `e2e`, `jobs`, `boarding`, `job:boarding`, `job:overdue`
+
+**apps/web** — `dev`, `build` (client + SSR pass + prerender), `build:nossr`, `lint`, `preview`
+
+**apps/admin** — `dev`, `build`, `lint`, `preview`
+
+Tests under `server/test/` need a running server and a live database; they hit the real API.
+
+## Environment
+
+Every key is documented in the `.env.example` next to the app that reads it. `.env` files are git-ignored and have never been committed.
+
+Client variables carry a `VITE_` prefix and are bundled into the JavaScript — they are visible to anyone. Secrets belong only in `server/.env`.
 
 ## Notes
 
-- Interface is fully bilingual (Russian / Uzbek) via a hand-rolled i18n dictionary — no runtime i18n dependency.
-- Telegram bot handles onboarding, phone-number capture and verification codes, and opens the app as a Mini App.
-- Secrets are never committed; all credentials are read from environment variables. `.env.example` files document the required keys.
+- The landing lives at `/` inside the client app, not as a separate build: the domain is shared, and a second bundle behind nginx would add a moving part for nothing.
+- `npm run build` in `apps/web` runs a second SSR pass and bakes the landing markup into `dist/index.html`, so crawlers and link previews see real text instead of an empty root node.
+- Payments through Click and Payme are not connected yet. Until they are, a client files a top-up or withdrawal request and an admin approves it in **Requests** — only then does money move.
+- The public offer and privacy pages are drafts and have not been reviewed by a lawyer. Both carry a visible notice saying so.

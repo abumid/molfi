@@ -465,6 +465,42 @@ const migrate = async () => {
     );
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS contract_id INTEGER REFERENCES contracts(id);
 
+    -- Заявки на пополнение и вывод. Пока Click и Payme не подключены,
+    -- клиент оставляет заявку с суммой, админ её одобряет, и только тогда
+    -- деньги двигаются. Отдельная таблица, а не статус у транзакции:
+    -- транзакция — это свершившийся факт движения денег, и заявка,
+    -- лежащая в ней со статусом «ждёт», ломала бы любой подсчёт баланса.
+    CREATE TABLE IF NOT EXISTS payment_requests (
+      id             SERIAL PRIMARY KEY,
+      user_id        INTEGER NOT NULL REFERENCES users(id),
+      kind           VARCHAR(20) NOT NULL,
+      amount_tiyin   BIGINT NOT NULL CHECK (amount_tiyin > 0),
+      status         VARCHAR(20) NOT NULL DEFAULT 'pending',
+      note           VARCHAR(300),
+      admin_comment  VARCHAR(300),
+      transaction_id INTEGER REFERENCES transactions(id),
+      created_at     TIMESTAMP DEFAULT NOW(),
+      decided_at     TIMESTAMP,
+      decided_by     INTEGER REFERENCES users(id)
+    );
+
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payment_requests_kind_check') THEN
+        ALTER TABLE payment_requests ADD CONSTRAINT payment_requests_kind_check
+          CHECK (kind IN ('topup','withdrawal'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payment_requests_status_check') THEN
+        ALTER TABLE payment_requests ADD CONSTRAINT payment_requests_status_check
+          CHECK (status IN ('pending','approved','rejected'));
+      END IF;
+    END $$;
+
+    CREATE INDEX IF NOT EXISTS idx_payment_requests_pending
+      ON payment_requests (created_at DESC) WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS idx_payment_requests_user
+      ON payment_requests (user_id, created_at DESC);
+
     -- ============================================================
     -- 10. ИНДЕКСЫ
     -- ============================================================
