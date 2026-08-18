@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store'
 import { useT } from '../i18n'
 import { formatSum, formatDate } from '../utils/format'
+import BalanceCard from '../components/BalanceCard'
 
 const C = {
   bg: 'var(--color-bg)', surface: 'var(--color-surface)', surface2: 'var(--color-surface-2)', border: 'var(--color-border)',
@@ -56,7 +57,7 @@ const inputStyle = {
 
 export default function Wallet() {
   const navigate = useNavigate()
-  const { balance, contracts, transactions, user, isAuthenticated, fetchTransactions, fetchBalance, fetchContracts, language } = useStore()
+  const { contracts, transactions, user, isAuthenticated, fetchTransactions, fetchBalance, fetchContracts, language } = useStore()
   const [showTopup, setShowTopup] = useState(false)
   const [showWithdraw, setShowWithdraw] = useState(false)
   const [amount, setAmount] = useState('')
@@ -67,14 +68,7 @@ export default function Wallet() {
     if (isAuthenticated && user) { fetchBalance(); fetchTransactions(); fetchContracts() }
   }, [isAuthenticated, user])
 
-  // «Заморожено» — деньги, вложенные в живые договоры: вернуть их
-  // можно только продав животное, свободными они не считаются
   const active = contracts.filter(c => c.status === 'active')
-  const frozenAmount = active.reduce((sum, c) => sum + (Number(c.principal_tiyin) || 0), 0)
-  const expectedPayout = active
-    .filter(c => c.model_type === 'investment')
-    .reduce((sum, c) => sum + (Number(c.summary?.net) || 0), 0)
-
   const filtered = filter === 'all' ? transactions : transactions.filter(tx => tx.type === filter)
 
   const handlePayMethod = () => alert(t.wallet.coming_soon)
@@ -85,25 +79,13 @@ export default function Wallet() {
         {t.wallet.title}
       </h1>
 
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20, marginBottom: 16 }}>
-        <Row label={t.wallet.free_balance} value={formatSum(balance, language)} valueColor={C.text} big />
-        <Row label={t.wallet.frozen} value={formatSum(frozenAmount, language)} valueColor={C.gold} />
-        <Row label={t.wallet.expected_payout} value={formatSum(expectedPayout, language)} valueColor={C.accent} last />
-
-        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button onClick={() => setShowTopup(true)} style={{
-            flex: 1, background: C.accent, color: C.bg, fontWeight: 600,
-            height: 44, borderRadius: 12, border: 'none', cursor: 'pointer', fontSize: 14,
-          }}>
-            {t.wallet.topup}
-          </button>
-          <button onClick={() => setShowWithdraw(true)} style={{
-            flex: 1, background: C.surface2, color: C.text,
-            border: `1px solid ${C.border}`, height: 44, borderRadius: 12, cursor: 'pointer', fontSize: 14,
-          }}>
-            {t.wallet.withdraw}
-          </button>
-        </div>
+      {/* Та же карточка, что на каталоге: числа обязаны совпадать,
+          а два похожих блока разъезжаются при первой же правке */}
+      <div style={{ marginBottom: 16 }}>
+        <BalanceCard
+          onTopUp={() => setShowTopup(true)}
+          onWithdraw={() => setShowWithdraw(true)}
+        />
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' }}>
@@ -237,16 +219,3 @@ export default function Wallet() {
   )
 }
 
-function Row({ label, value, valueColor, big, last }) {
-  return (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      padding: '10px 0', borderBottom: last ? 'none' : `1px solid ${C.border}`,
-    }}>
-      <span style={{ fontSize: 13, color: C.textMuted }}>{label}</span>
-      <span style={{ fontSize: big ? 20 : 15, fontWeight: 700, color: valueColor, fontFamily: big ? 'Unbounded, sans-serif' : 'inherit' }}>
-        {value}
-      </span>
-    </div>
-  )
-}

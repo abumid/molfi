@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store'
 import { useT } from '../i18n'
 import { formatSum } from '../utils/format'
+import BalanceCard from '../components/BalanceCard'
 import MolfiLogo from '../components/Logo'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 import { Card, Badge } from '../components/ui'
@@ -116,13 +117,16 @@ function Stat({ label, value }) {
 
 export default function Catalog() {
   const navigate = useNavigate()
-  const { language, products, models, fetchProducts, fetchModels, fetchBalance, balance } = useStore()
+  const { language, products, models, fetchProducts, fetchModels, fetchBalance, fetchContracts } = useStore()
   const t = useT(language)
   const [tab, setTab] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([fetchModels(), fetchProducts(), fetchBalance()]).finally(() => setLoading(false))
+    // Договоры нужны карточке баланса: без них она покажет только
+    // свободные деньги и промолчит про активы
+    Promise.all([fetchModels(), fetchProducts(), fetchBalance(), fetchContracts()])
+      .finally(() => setLoading(false))
   }, [])
 
   // Вкладка по умолчанию — первая включённая модель. Жёстко зашивать нельзя:
@@ -140,18 +144,11 @@ export default function Catalog() {
         <LanguageSwitcher />
       </div>
 
-      <div
-        onClick={() => navigate('/wallet')}
-        style={{
-          background: 'linear-gradient(135deg, var(--color-green) 0%, var(--color-surface) 100%)',
-          border: '1px solid var(--color-border)', borderRadius: 18,
-          padding: 18, marginBottom: 18, cursor: 'pointer',
-        }}
-      >
-        <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{t.wallet.free_balance}</div>
-        <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'Unbounded, sans-serif', marginTop: 4 }}>
-          {formatSum(balance, language)}
-        </div>
+      <div style={{ marginBottom: 18 }}>
+        <BalanceCard
+          onTopUp={() => navigate('/wallet')}
+          onWithdraw={() => navigate('/wallet')}
+        />
       </div>
 
       {/* Вкладки моделей. Одна модель — вкладки не нужны, только шум. */}
