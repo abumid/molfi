@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { useStore } from './store'
 import { useT } from './i18n'
 import BottomNav from './components/layout/BottomNav'
+import Landing from './pages/Landing'
 import Onboarding from './pages/Onboarding'
 import Auth from './pages/Auth'
 import Catalog from './pages/Catalog'
@@ -34,16 +35,32 @@ function LoadingScreen() {
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, isLoading } = useStore()
+  const location = useLocation()
   // Ждём восстановления сессии, иначе уже вошедшего пользователя может
   // на мгновение перекинуть на /auth раньше, чем restoreSession() успеет
   // отработать (например, при обновлении страницы).
   if (isLoading) return <LoadingScreen />
-  return isAuthenticated ? children : <Navigate to="/auth" replace />
+  if (isAuthenticated) return children
+  // Запоминаем, куда человек шёл: после входа вернём туда же, а не
+  // высадим в каталог, где он уже не помнит, какого барана выбирал
+  return <Navigate to="/auth" replace state={{ from: location.pathname + location.search }} />
+}
+
+/**
+ * В Telegram лендинг не нужен: мини-приложение открывают из бота, человек
+ * уже пришёл за покупкой, и рекламная страница здесь только мешает.
+ */
+const inTelegram = () => {
+  try {
+    return Boolean(window.Telegram?.WebApp?.initData)
+  } catch {
+    return false
+  }
 }
 
 function Layout() {
   const location = useLocation()
-  const { isAuthenticated, isLoading } = useStore()
+  const { isLoading } = useStore()
   const restoreSession = useStore(s => s.restoreSession)
   const fetchModels = useStore(s => s.fetchModels)
   const fetchContracts = useStore(s => s.fetchContracts)
@@ -64,10 +81,21 @@ function Layout() {
   return (
     <>
       <Routes>
+        {/* Корень molfi.uz — публичная страница, и вошедшему она тоже
+            показывается: иначе владелец сайта не может её открыть, не
+            выйдя из аккаунта. Кнопка «Открыть приложение» ведёт в каталог
+            или на вход — смотря авторизован человек или нет.
+            В Telegram лендинг пропускаем: туда приходят из бота за покупкой. */}
         <Route path="/" element={
-          isLoading ? <LoadingScreen /> : (isAuthenticated ? <Navigate to="/catalog" replace /> : <Onboarding />)
+          isLoading ? <LoadingScreen />
+            : inTelegram() ? <Onboarding />
+            : <Landing />
         } />
         <Route path="/auth" element={<Auth />} />
+        {/* Каталог закрыт: смотреть предложения можно только после входа.
+            PrivateRoute запоминает, куда человек шёл, и вернёт его туда
+            же после логина — иначе он попадает в каталог, забыв, какую
+            карточку открывал. */}
         <Route path="/catalog" element={<PrivateRoute><Catalog /></PrivateRoute>} />
         <Route path="/product/:id" element={<PrivateRoute><ProductDetail /></PrivateRoute>} />
         <Route path="/product/:id/checkout" element={<PrivateRoute><Checkout /></PrivateRoute>} />

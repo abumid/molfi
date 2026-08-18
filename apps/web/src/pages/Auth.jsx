@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { retrieveLaunchParams, retrieveRawInitData, requestContact } from '@telegram-apps/sdk'
 import { useStore } from '../store'
 import { useT } from '../i18n'
@@ -246,12 +246,18 @@ export default function Auth() {
   const language = useStore(s => s.language)
   const t = useT(language)
   const navigate = useNavigate()
+  const location = useLocation()
 
   const apiPhone = toApiPhone(phone)
 
+  // Куда вернуть после входа: PrivateRoute кладёт сюда путь, с которого
+  // человека развернули. Иначе он логинится и попадает в каталог, забыв,
+  // какого барана открывал.
+  const returnTo = location.state?.from || '/catalog'
+
   const goCatalog = (token, user) => {
     login(token, user)
-    navigate('/catalog')
+    navigate(returnTo, { replace: true })
   }
 
   useEffect(() => {

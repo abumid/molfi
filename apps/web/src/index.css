@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Тёмная тема — основная. Приложение открывают вечером с телефона,
+   и светлый экран в тёмной комнате бьёт по глазам. Светлая живёт
+   на лендинге: его открывают днём с рабочего компьютера. */
 :root {
   --color-bg:           #1a2e1a;
   --color-surface:      #213d21;
@@ -14,6 +17,34 @@
   --color-success:      #5acc5a;
   --color-red:          #e05555;
   --color-gold:         var(--color-accent);
+
+  /* Палитра лендинга: темнее приложения, так прописано в спеке */
+  --land-bg:      #0a0f0a;
+  --land-surface: #111a11;
+  --land-surface-2: #182018;
+  --land-border:  #2a3a2a;
+  --land-accent:  #6fcf4a;
+  --land-gold:    #d4a843;
+  --land-text:    #e8f0e8;
+  --land-muted:   #7a9a7a;
+  --land-dim:     #4f6b4f;
+  --land-on:      #0a0f0a;
+}
+
+/* Светлая тема — только лендинг, класс вешается на его корень.
+   Зелёный акцент осветлён: #6fcf4a на белом даёт контраст 1.9:1
+   и текст на нём не читается. */
+.theme-light {
+  --land-bg:      #f5f8f3;
+  --land-surface: #ffffff;
+  --land-surface-2: #ecf2e8;
+  --land-border:  #d6e2d1;
+  --land-accent:  #3f8f28;
+  --land-gold:    #9a7118;
+  --land-text:    #16241a;
+  --land-muted:   #5b7a5b;
+  --land-dim:     #8aa88a;
+  --land-on:      #ffffff;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -27,6 +58,11 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
 }
+
+/* Лендинг — единственный экран во всю ширину: 430px хороши для
+   мобильного приложения и абсурдны для страницы на десктопе */
+body:has(.landing-root) { max-width: none; }
+body:has(.landing-root.theme-light) { background: var(--land-bg); }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
