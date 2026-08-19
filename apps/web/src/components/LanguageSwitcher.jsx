@@ -1,12 +1,12 @@
 import { useStore } from '../store'
 import { LANGUAGES } from '../i18n'
 
-// Один компонент на все три места. Раньше в Auth и Catalog стояли
-// бинарные тумблеры ru↔uz, которыми третий язык не выразить,
-// а в Profile — отдельный список из двух пунктов.
+// One component for all three places. Auth and Catalog used to carry binary
+// ru↔uz toggles, which cannot express a third language, and Profile had a
+// separate two-item list.
 //
-// variant="compact" — сегментированный переключатель в шапке
-// variant="full"    — строка кнопок с названиями, для настроек профиля
+// variant="compact" — segmented switch in the header
+// variant="full"    — row of named buttons, for the profile settings
 
 export default function LanguageSwitcher({ variant = 'compact', style }) {
   const language = useStore(s => s.language)

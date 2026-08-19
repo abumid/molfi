@@ -30,8 +30,8 @@ export default function Checkout() {
   if (!product) return <Centered>{t.common.error}</Centered>
 
   const price = Number(product.price_tiyin) || 0
-  // Комиссия при покупке сейчас нулевая, но поле остаётся:
-  // включат в настройках — экран покажет её сам, без правки кода
+  // The purchase fee is zero right now, but the field stays: switch it on in
+  // settings and the screen shows it by itself, with no code change
   const fee = 0
   const total = price + fee
   const enough = balance >= total
@@ -42,8 +42,8 @@ export default function Checkout() {
     setSaving(true)
     setError(null)
     try {
-      // id нового договора нужен сразу: с этого экрана ведём человека
-      // прямо к его животному, а не в общий список
+      // The new contract id is needed right away: from this screen the person
+      // goes straight to their animal, not to a general list
       const res = await api.post('/contracts', {
         product_id: product.id,
         ...(product.model_type === 'ownership' ? { exit_type: exitType } : {}),
@@ -68,9 +68,9 @@ export default function Checkout() {
         <h2 style={{ fontFamily: 'Unbounded, sans-serif', fontSize: 20, margin: 0 }}>{t.checkout.done}</h2>
         <p style={{ textAlign: 'center', margin: '10px 0 24px', maxWidth: 320 }}>{t.checkout.doneText}</p>
         <div style={{ width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {/* Ведём на карточку купленного животного. Раньше отсюда кидало
-              в профиль, где животного нет — человек терял его из виду
-              ровно в тот момент, когда за него заплатил. */}
+          {/* Leads to the card of the animal just bought. This used to throw the
+              user into the profile, where the animal is not — they lost sight of
+              it at exactly the moment they paid for it. */}
           <Button onClick={() => navigate(`/contracts/${done.id}`, { replace: true })}>
             {done.animal_id ? t.contracts.track : t.checkout.toContracts}
           </Button>
@@ -115,8 +115,8 @@ export default function Checkout() {
         </Card>
       )}
 
-      {/* У владения клиент сам решает, забрать живым или мясом.
-          У инвестиции выход один — продажа, выбирать нечего. */}
+      {/* In ownership the client decides whether to take it live or as meat.
+          In investment there is one exit — a sale — so there is nothing to pick. */}
       {product.model_type === 'ownership' ? (
         <Card style={{ marginTop: 12 }}>
           <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 10 }}>
@@ -147,8 +147,8 @@ export default function Checkout() {
         </Card>
       )}
 
-      {/* Оговорка обязательна и намеренно не спрятана мелким шрифтом внизу:
-          обещание доходности — это обязательство, за которое отвечают деньгами */}
+      {/* The disclaimer is required and deliberately not hidden in small print at
+          the bottom: a promised return is an obligation you answer for with money */}
       {isInvestment && (
         <p style={{
           fontSize: 12, color: 'var(--color-text-muted)', lineHeight: 1.5,

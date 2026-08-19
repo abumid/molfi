@@ -18,11 +18,11 @@ const STATUS_COLOR = {
 }
 
 /**
- * Экран отслеживания собственного животного.
+ * Tracking screen for an animal you own.
  *
- * Отдельный от карточки товара сознательно: после покупки оффер уходит
- * в sold_out и исчезает с витрины, а владельцу именно с этого момента
- * и нужно следить — весь срок откорма.
+ * Deliberately separate from the product card: after the purchase the offer
+ * goes sold_out and leaves the catalogue, and that is exactly when the owner
+ * needs to watch — for the whole fattening season.
  */
 export default function ContractDetail() {
   const { id } = useParams()
@@ -67,8 +67,8 @@ export default function ContractDetail() {
   const due = Math.max(0,
     (Number(c.boarding_accrued_tiyin) || 0) - (Number(c.boarding_paid_tiyin) || 0))
   const worth = Number(data.summary?.gross) || 0
-  // Знаковый результат, а не обрезанный по нулю profit: иначе убыток
-  // печатается нулём, и владелец не понимает, потерял он что-то или нет
+  // The signed result, not the profit clamped at zero: otherwise a loss prints
+  // as zero and the owner cannot tell whether they lost anything
   const pnl = Number(data.summary?.pnl) || 0
 
   const statusLabel = t.contracts['status' + c.status[0].toUpperCase() + c.status.slice(1)]
@@ -140,8 +140,8 @@ export default function ContractDetail() {
           ]} />
         )}
 
-        {/* Долг за уход — единственное, что требует действия. Он идёт
-            сразу под показателями, а не теряется в общем списке цифр */}
+        {/* Care debt is the only thing that needs action. It goes right under the
+            key figures instead of getting lost in a general list of numbers */}
         {payable && (
           <div style={{
             marginTop: 12, background: 'var(--color-surface)',

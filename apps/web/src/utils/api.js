@@ -35,8 +35,8 @@ export const api = {
     if (!res.ok) throw new Error(await res.text())
     return res.json()
   },
-  // Назван del, а не delete: delete — зарезервированное слово,
-  // и как имя метода объекта оно читается хуже, чем работает
+  // Named del rather than delete: delete is a reserved word, and as an object
+  // method name it reads worse than it works
   del: async (path) => {
     const res = await fetch(`${BASE_URL}${path}`, {
       method: 'DELETE',

@@ -44,8 +44,8 @@ export const api = {
   }
 }
 
-// Валюта и разделители зависят от языка: при английском интерфейсе
-// суммы не должны выходить по-русски.
+// Currency and separators depend on the language: an English interface must not
+// print sums in Russian.
 const LOCALE = { en: 'en-US', ru: 'ru-RU', uz: 'uz-UZ' }
 const CURRENCY = { en: 'UZS', ru: 'сум', uz: "so'm" }
 
@@ -64,7 +64,7 @@ export const formatDate = (date, language = 'en') => {
   })
 }
 
-/** Без времени — для сроков платежей и дат рождения. */
+/** Without the time — for payment due dates and birth dates. */
 export const formatDay = (date, language = 'en') => {
   if (!date) return '—'
   return new Date(date).toLocaleDateString(LOCALE[language] || LOCALE.en, {

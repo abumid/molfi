@@ -1,26 +1,26 @@
-// Molfi — расчёты по трём моделям.
+// Molfi — math for the three ownership models.
 //
-//   investment  — клиент покупает животное, ферма его растит, клиент решает
-//                 когда продать. Абонплата за содержание копится и гасится
-//                 из выручки при продаже. Доход прогнозный: вес × цена за кг.
-//                 Никаких обещанных процентов — животноводство их не даёт.
+//   investment  — the client buys an animal, the farm raises it, the client
+//                 decides when to sell. Boarding fees accrue and are settled
+//                 out of the sale proceeds. Income is a projection: weight ×
+//                 price per kg. No promised rate — livestock cannot give one.
 //
-//   ownership   — клиент покупает животное и платит абонплату помесячно,
-//                 в конце забирает его живым или мясом. Денежного возврата нет.
+//   ownership   — the client buys an animal and pays boarding monthly, then
+//                 takes it live or as meat. There is no cash payout.
 //
-//   installment — мясо по фиксированной цене с оплатой за N месяцев.
-//                 Пока выключена в settings.models_enabled.
+//   installment — meat at a fixed price paid over N months.
+//                 Currently switched off via settings.models_enabled.
 //
-// Правила:
-//   • все деньги — целые тийины, 1 сум = 100 тийин
-//   • все ставки — базисные пункты: 300 = 3%
-//   • округление только Math.round на границе
-//   • тарифы приходят параметрами из settings, не константами
+// Rules:
+//   • all money is whole tiyin, 1 sum = 100 tiyin
+//   • all rates are basis points: 300 = 3%
+//   • rounding happens only via Math.round at the boundary
+//   • tariffs arrive as parameters from settings, never as constants
 
-const BP = 10000 // 100% в базисных пунктах
+const BP = 10000 // 100% in basis points
 
 // ─────────────────────────────────────────────────────────────
-// Общее
+// Shared helpers
 // ─────────────────────────────────────────────────────────────
 
 const num = (v) => Number(v) || 0
@@ -36,21 +36,21 @@ export const addMonths = (date, n) => {
   return d
 }
 
-/** Комиссия при покупке. Сейчас 0 — включается настройкой, не кодом. */
+/** Purchase fee. Currently 0 — enabled through settings, not through code. */
 export const purchaseFee = (priceTiyin, feeBp) =>
   Math.round(num(priceTiyin) * num(feeBp) / BP)
 
-/** Полная сумма к списанию при оформлении. */
+/** Full amount charged at checkout. */
 export const purchaseTotal = (priceTiyin, feeBp) =>
   num(priceTiyin) + purchaseFee(priceTiyin, feeBp)
 
 // ─────────────────────────────────────────────────────────────
-// Абонплата за содержание
+// Boarding fee
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Сколько месяцев содержания накопилось к дате.
- * Считаем завершённые месяцы: пока месяц не прошёл, платить не за что.
+ * How many months of boarding have accrued by a given date.
+ * Only completed months count: an unfinished month is not billable yet.
  */
 export const boardingMonthsDue = (startsAt, asOf = new Date()) => {
   const start = new Date(startsAt)
@@ -58,21 +58,21 @@ export const boardingMonthsDue = (startsAt, asOf = new Date()) => {
   return Math.max(0, monthsBetween(start, asOf))
 }
 
-/** Начисленная абонплата за весь срок владения на дату. */
+/** Boarding accrued over the whole holding period up to a date. */
 export const boardingDue = (contract, asOf = new Date()) =>
   boardingMonthsDue(contract.starts_at, asOf) * num(contract.boarding_fee_monthly_tiyin)
 
-/** Непогашенный остаток по содержанию. */
+/** Outstanding boarding balance. */
 export const boardingOutstanding = (contract) =>
   Math.max(0, num(contract.boarding_accrued_tiyin) - num(contract.boarding_paid_tiyin))
 
 // ─────────────────────────────────────────────────────────────
-// INVESTMENT — покупка ради продажи
+// INVESTMENT — bought in order to be sold
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Прогнозная выручка от продажи: текущий вес × цена за килограмм.
- * Это ожидание, а не обещание: и вес, и цена меняются.
+ * Projected sale revenue: current weight × price per kilogram.
+ * This is an expectation, not a promise — both weight and price move.
  */
 export const projectedRevenue = (animal) => {
   const kg = num(animal.current_weight_g) / 1000
@@ -80,11 +80,11 @@ export const projectedRevenue = (animal) => {
 }
 
 /**
- * Что клиент получит, если продать животное прямо сейчас.
+ * What the client receives if the animal is sold right now.
  *
- * Порядок вычетов важен: сначала гасится долг по содержанию, потом
- * считается прибыль, и только с неё берётся комиссия. Комиссия с выручки
- * означала бы, что при падении цены клиент платит за собственный убыток.
+ * The order of deductions matters: boarding debt is settled first, profit is
+ * computed after that, and the fee is taken from profit only. A fee on gross
+ * revenue would mean that when prices fall the client pays for their own loss.
  */
 export const investmentPayout = (contract, animal, opts = {}) => {
   const {
@@ -97,23 +97,23 @@ export const investmentPayout = (contract, animal, opts = {}) => {
   const gross = salePriceTiyin != null ? num(salePriceTiyin) : projectedRevenue(animal)
   const principal = num(contract.principal_tiyin)
 
-  // Долг по содержанию: либо уже начисленный, либо считаем по сроку
+  // Boarding debt: either what has already been accrued, or computed from term
   const boarding = num(contract.boarding_accrued_tiyin) > 0
     ? boardingOutstanding(contract)
     : boardingDue(contract, asOf)
 
-  // Знаковый результат — для показа клиенту. Отдельно от profit намеренно:
-  // profit обрезан по нулю ради комиссии (брать процент с убытка нельзя),
-  // и если показывать его же, убыток на экране превращается в «0» —
-  // человек видит ноль и не понимает, потерял он что-то или нет.
+  // Signed result, for display. Deliberately separate from profit: profit is
+  // clamped at zero for the fee math (you cannot charge a percentage of a
+  // loss), and reusing it for display would turn a loss into "0" on screen —
+  // the client sees a zero and cannot tell whether they lost anything.
   const pnl = gross - principal - boarding
 
   const profit = Math.max(0, pnl)
   const feeClient = Math.round(profit * num(profitFeeClientBp) / BP)
   const feeFarm = Math.round(profit * num(profitFeeFarmBp) / BP)
 
-  // Клиент не может получить меньше нуля: если выручки не хватило даже
-  // на содержание, недостача остаётся долгом, а не отрицательной выплатой
+  // The client can never receive less than zero: if revenue did not even cover
+  // boarding, the gap stays a debt rather than becoming a negative payout
   const net = Math.max(0, gross - boarding - feeClient)
   const shortfall = Math.max(0, boarding - Math.max(0, gross - feeClient))
 
@@ -127,18 +127,18 @@ export const investmentPayout = (contract, animal, opts = {}) => {
     fee_farm: feeFarm,
     net,
     shortfall,
-    // Доходность относительно вложенного — для показа клиенту
+    // Return relative to the amount invested, for display
     return_pct: principal ? (net - principal) / principal : 0,
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-// OWNERSHIP — покупка ради мяса
+// OWNERSHIP — bought for the meat
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Сводка по договору владения. Денежного возврата нет: клиент забирает
- * животное или мясо, а платит только за содержание.
+ * Summary for an ownership contract. There is no cash payout: the client takes
+ * the animal or the meat, and only pays for boarding.
  */
 export const ownershipSummary = (contract, asOf = new Date()) => {
   const months = boardingMonthsDue(contract.starts_at, asOf)
@@ -155,13 +155,13 @@ export const ownershipSummary = (contract, asOf = new Date()) => {
 }
 
 // ─────────────────────────────────────────────────────────────
-// INSTALLMENT — рассрочка
+// INSTALLMENT — payment by instalments
 // ─────────────────────────────────────────────────────────────
 
 /**
- * График платежей. Остаток от деления кидаем в первый платёж, чтобы сумма
- * графика сошлась с ценой до тийина — иначе на 12 месяцах теряется до
- * 11 тийин и договор никогда не закроется.
+ * Payment schedule. The division remainder goes into the first instalment so
+ * that the schedule adds up to the price down to the tiyin — otherwise up to
+ * 11 tiyin are lost over 12 months and the contract can never close.
  */
 export const buildSchedule = (totalTiyin, months, startDate = new Date()) => {
   const total = num(totalTiyin)
@@ -200,7 +200,7 @@ export const installmentSummary = (contract, schedule, asOf = new Date()) => {
   }
 }
 
-/** Пеня за просрочку. lateFeeBp — за каждый день. */
+/** Late-payment penalty. lateFeeBp is charged per day overdue. */
 export const lateFee = (installment, lateFeeBp, asOf = new Date()) => {
   if (!lateFeeBp) return 0
   const days = Math.max(0, daysBetween(new Date(installment.due_date), asOf))
@@ -209,7 +209,7 @@ export const lateFee = (installment, lateFeeBp, asOf = new Date()) => {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Роутер по модели
+// Dispatch by model
 // ─────────────────────────────────────────────────────────────
 
 export const contractSummary = (contract, ctx = {}) => {

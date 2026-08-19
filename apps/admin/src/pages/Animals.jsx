@@ -7,8 +7,8 @@ import { useT } from '../i18n'
 const SPECIES = ['sheep', 'cattle', 'goat']
 const STATUSES = ['active', 'reserved', 'owned', 'sold', 'slaughtered', 'dead']
 
-// Цвет статуса: свободное животное — зелёное, проданное или павшее — приглушённое,
-// в собственности — золотое, чтобы отличать «можно продать» от «уже чьё-то».
+// Status colour: a free animal is green, a sold or dead one is muted, an owned
+// one is gold, so that "can be sold" is distinct from "already someone's".
 const STATUS_BADGE = {
   active: 'badge-green',
   reserved: 'badge-blue',
@@ -52,8 +52,8 @@ const toPayload = (f) => ({
   birth_date: f.birth_date || null,
   status: f.status,
   photo_url: f.photo_url.trim() || null,
-  // Пустую строку шлём намеренно: на бэкенде это «очистить ссылку».
-  // Через null камеру нельзя было бы снять — COALESCE сохранил бы старую.
+  // An empty string is sent deliberately: on the backend it means "clear the link".
+  // With null the camera could not be removed — COALESCE would keep the old one.
   stream_url: f.stream_url.trim(),
 })
 
@@ -119,7 +119,7 @@ export default function Animals() {
       await api.delete(`/admin/animals/${a.id}`)
       load()
     } catch (e) {
-      // Бэкенд отвечает has_active_contracts — переводим в человеческий текст
+      // The backend answers has_active_contracts — turned into human text here
       alert(String(e.message).includes('has_active_contracts')
         ? t('animals.hasContracts')
         : t('common.error') + ': ' + e.message)

@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 /**
- * Выпадающий список с поиском.
+ * Dropdown with search.
  *
- * Обычный <select> нормально работает на десятке вариантов и перестаёт
- * работать на сотне: остаётся только скроллить. Здесь можно набрать
- * часть имени, телефона или клички и попасть в нужную строку сразу.
+ * A plain <select> works fine with a dozen options and stops working at a
+ * hundred: all you can do is scroll. Here you can type part of a name, phone
+ * number or animal name and land on the right row at once.
  *
  * options: [{ value, label, hint?, search? }]
- *   label  — что видно в строке
- *   hint   — приглушённый текст справа (баланс, цена, статус)
- *   search — по чему искать, если этого нет в label (например телефон)
+ *   label  — what is visible in the row
+ *   hint   — muted text on the right (balance, price, status)
+ *   search — what to match on when it is not in the label (a phone, say)
  */
 export default function SearchSelect({
   value,
@@ -38,7 +38,7 @@ export default function SearchSelect({
     )
   }, [options, query])
 
-  // Клик мимо закрывает список — иначе он остаётся висеть поверх формы
+  // A click outside closes the list — otherwise it hangs over the form
   useEffect(() => {
     if (!open) return
     const onDocClick = (e) => {
@@ -52,12 +52,12 @@ export default function SearchSelect({
     if (open) {
       setQuery('')
       setCursor(0)
-      // Фокус в поиск сразу: открыл — печатай, без лишнего клика
+      // Focus goes to the search box at once: open it and type, no extra click
       requestAnimationFrame(() => inputRef.current?.focus())
     }
   }, [open])
 
-  // Держим подсвеченную строку в поле зрения при навигации стрелками
+  // Keep the highlighted row in view while navigating with the arrow keys
   useEffect(() => {
     const el = listRef.current?.children[cursor]
     el?.scrollIntoView({ block: 'nearest' })

@@ -56,8 +56,8 @@ export default function Dashboard() {
           <div className="stat-sub">{t('dashboard.registered')}</div>
         </div>
 
-        {/* Просрочки — единственная плитка, которая требует действия,
-            поэтому красная только когда их правда больше нуля */}
+        {/* Overdue is the only tile that needs action, so it turns red only when
+            there really is more than zero */}
         <div
           className="stat-card"
           style={{ cursor: 'pointer', borderColor: overdue > 0 ? 'var(--red)' : undefined }}

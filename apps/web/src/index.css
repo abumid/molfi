@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
-/* Тёмная тема — основная. Приложение открывают вечером с телефона,
-   и светлый экран в тёмной комнате бьёт по глазам. Светлая живёт
-   на лендинге: его открывают днём с рабочего компьютера. */
+/* The dark theme is the primary one. The app is opened in the evening from a
+   phone, and a bright screen in a dark room hurts. The light theme lives on
+   the landing page: that one is opened in daylight from a work computer. */
 :root {
   --color-bg:           #1a2e1a;
   --color-surface:      #213d21;
@@ -18,7 +18,7 @@
   --color-red:          #e05555;
   --color-gold:         var(--color-accent);
 
-  /* Палитра лендинга: темнее приложения, так прописано в спеке */
+  /* Landing palette: darker than the app, as written in the spec */
   --land-bg:      #0a0f0a;
   --land-surface: #111a11;
   --land-surface-2: #182018;
@@ -31,9 +31,9 @@
   --land-on:      #0a0f0a;
 }
 
-/* Светлая тема — только лендинг, класс вешается на его корень.
-   Зелёный акцент осветлён: #6fcf4a на белом даёт контраст 1.9:1
-   и текст на нём не читается. */
+/* Light theme — landing only, the class goes on its root.
+   The green accent is lightened: #6fcf4a on white gives a 1.9:1 contrast
+   ratio and text on it cannot be read. */
 .theme-light {
   --land-bg:      #f5f8f3;
   --land-surface: #ffffff;
@@ -59,8 +59,8 @@ body {
   overflow-x: hidden;
 }
 
-/* Лендинг — единственный экран во всю ширину: 430px хороши для
-   мобильного приложения и абсурдны для страницы на десктопе */
+/* The landing is the only full-width screen: 430px is right for a mobile app
+   and absurd for a page on a desktop */
 body:has(.landing-root) { max-width: none; }
 body:has(.landing-root.theme-light) { background: var(--land-bg); }
 

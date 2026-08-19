@@ -7,8 +7,8 @@ import { store as ls, prefersLight } from '../utils/storage'
 
 const THEME_KEY = 'molfi_landing_theme'
 
-// Ссылка внутри приложения — кнопка, а не <a href>: обычная ссылка
-// перезагрузила бы весь бандл вместо перехода по роутеру
+// An in-app link is a button, not an <a href>: a plain link would reload the
+// whole bundle instead of routing
 const link = (color) => ({
   background: 'none', border: 'none', padding: 0, cursor: 'pointer',
   color, fontSize: 'inherit', fontFamily: 'Inter, sans-serif', textDecoration: 'underline',
@@ -22,22 +22,22 @@ const SOCIAL = [
 ]
 
 /**
- * Публичный корень molfi.uz.
+ * The public root of molfi.uz.
  *
- * Живёт внутри клиентского приложения, а не отдельной сборкой: домен
- * один, и вторая сборка на нём потребовала бы nginx перед двумя
- * бандлами, не дав ничего взамен.
+ * Lives inside the client app rather than as a separate build: there is one
+ * domain, and a second build on it would need nginx in front of two bundles
+ * while giving nothing back.
  *
- * Показывается и вошедшему тоже — иначе владелец сайта не может открыть
- * собственную страницу, не выйдя из аккаунта.
+ * Shown to signed-in users too — otherwise the site owner cannot open their own
+ * page without logging out.
  */
 export default function Landing() {
   const navigate = useNavigate()
   const { language, setLanguage, isAuthenticated } = useStore()
   const L = useL(language)
 
-  // Тема: сохранённый выбор важнее системного, но при первом заходе
-  // спрашивать нечего — берём то, что человек уже настроил в системе
+  // Theme: a saved choice beats the system one, but on a first visit there is
+  // nothing to ask — take what the person already set in their system
   const [light, setLight] = useState(() => {
     const saved = ls.get(THEME_KEY)
     return saved ? saved === 'light' : prefersLight()
@@ -176,8 +176,8 @@ export default function Landing() {
           ))}
         </div>
 
-        {/* Оговорка о негарантированном доходе остаётся на самой странице,
-            а не только в оферте: её открывают уже после решения */}
+        {/* The note about returns not being guaranteed stays on the page itself
+            rather than only in the offer: the offer is opened after the decision */}
         <p style={{ fontSize: 12, color: S.dim, margin: '14px 0 0', lineHeight: 1.55 }}>
           {L.models.disclaimer}{' '}
           <button onClick={() => navigate('/offer')} style={link(S.accent)}>
@@ -205,9 +205,9 @@ export default function Landing() {
 
       <div style={section}>
         <h2 style={{ ...h2, marginBottom: 10 }}>{L.farm.title}</h2>
-        {/* Заглушек под фото нет намеренно: три пустых прямоугольника
-            с эмодзи говорят «настоящих снимков у нас нет» громче, чем
-            их отсутствие. Появятся фото — вернём сетку сюда. */}
+        {/* No photo placeholders on purpose: three empty rectangles with emoji
+            say "we have no real pictures" louder than their absence does.
+            Once photos exist, the grid comes back here. */}
         <p style={{ fontSize: 14, color: S.muted, lineHeight: 1.62, margin: 0, maxWidth: 720 }}>
           {L.farm.body}
         </p>
@@ -226,8 +226,8 @@ export default function Landing() {
             <MolfiLogo size={78} on={light ? 'light' : 'dark'} />
           </div>
 
-          {/* Объяснение названия переехало сюда с обложки: человек
-              дочитал страницу и уже знает, о чём речь */}
+          {/* The explanation of the name moved here from the cover: the reader has
+              gone through the page and already knows what this is about */}
           <h2 style={{ ...h2, fontSize: 'clamp(22px, 4.5vw, 28px)', lineHeight: 1.2 }}>
             {L.footer.title1}<br />{L.footer.title2}
           </h2>
@@ -246,8 +246,8 @@ export default function Landing() {
             </a>
           </div>
 
-          {/* Ссылки пока пустые: аккаунты заведут позже, а место под них
-              должно быть заложено сразу, иначе подвал придётся перевёрстывать */}
+          {/* The links are empty for now: the accounts will be created later, and
+              the space has to be laid out at once or the footer needs re-doing */}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 24 }}>
             {SOCIAL.map(([name, d]) => (
               <a

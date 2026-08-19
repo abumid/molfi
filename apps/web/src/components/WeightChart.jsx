@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { formatDate } from '../utils/format'
 
 /**
- * График веса на голом SVG — без библиотеки графиков.
- * Тянуть recharts ради одной ломаной значит добавить 200 КБ в бандл
- * мобильного приложения, которое грузится по мобильному интернету.
+ * Weight chart on bare SVG — no charting library.
+ * Pulling in recharts for a single polyline means adding 200 KB to the bundle
+ * of a mobile app that loads over mobile data.
  *
- * Точки нажимаются: статичная картинка не отвечает на вопрос
- * «а сколько он весил в мае», а он возникает первым.
+ * The points are tappable: a static picture does not answer "and how much did
+ * he weigh in May", which is the first question people ask.
  */
 export default function WeightChart({ points, language, t }) {
   const [picked, setPicked] = useState(null)
@@ -16,7 +16,7 @@ export default function WeightChart({ points, language, t }) {
     return <p style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>{t.product.noWeights}</p>
   }
 
-  const data = [...points].reverse() // с сервера приходят от новых к старым
+  const data = [...points].reverse() // the server sends newest to oldest
   const W = 300, H = 96, PAD = 10
   const values = data.map(d => Number(d.weight_g) || 0)
   const min = Math.min(...values)
@@ -49,7 +49,7 @@ export default function WeightChart({ points, language, t }) {
           <circle key={'d' + i} cx={x(i)} cy={y(values[i])} r={i === active ? 5 : 3}
                   fill="var(--color-green-light)" />
         ))}
-        {/* Прозрачные круги пошире: пальцем в точку радиусом 3 не попасть */}
+        {/* Wider transparent circles: a finger cannot hit a radius-3 dot */}
         {data.map((d, i) => (
           <circle
             key={'h' + i} cx={x(i)} cy={y(values[i])} r="14" fill="transparent"

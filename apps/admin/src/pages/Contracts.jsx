@@ -61,7 +61,7 @@ export default function Contracts() {
 
   useEffect(() => { load() }, [modelFilter, statusFilter])
 
-  // Справочники для формы: клиенты и офферы, которые ещё можно продать
+  // Reference data for the form: clients and offers that can still be sold
   const openCreate = () => {
     setForm({ user_id: '', product_id: '', exit_type: 'slaughter' })
     setCreating(true)
@@ -75,7 +75,7 @@ export default function Contracts() {
 
   const selectedUser = users.find(u => u.id === Number(form.user_id))
   const selectedOffer = offers.find(o => o.id === Number(form.product_id))
-  // Рассрочка при оформлении ничего не списывает — платит по графику
+  // An instalment charges nothing at signing — it is paid on the schedule
   const charge = selectedOffer && selectedOffer.model_type !== 'installment'
     ? Number(selectedOffer.price_tiyin) : 0
   const balance = Number(selectedUser?.balance_tiyin) || 0
@@ -105,7 +105,7 @@ export default function Contracts() {
 
   const openBoarding = (c) => {
     setBoarding(c)
-    // По умолчанию гасим весь долг: чаще всего платят именно так
+    // The whole debt is settled by default: that is how people usually pay
     setBoardingForm({ amount_sum: String(Math.floor(outstandingOf(c) / 100)), from_wallet: true })
   }
 
@@ -148,8 +148,8 @@ export default function Contracts() {
     setSaving(false)
   }
 
-  // Прогресс у каждой модели свой: у рассрочки это платежи,
-  // у вклада — начисленные месяцы, у владения — статус животного.
+  // Each model has its own notion of progress: instalments count payments,
+  // a deposit counts accrued months, ownership goes by the animal status.
   const progress = (c) => {
     if (c.model_type === 'installment') {
       const total = Number(c.payments_total) || 0
@@ -170,9 +170,9 @@ export default function Contracts() {
         </div>
       )
     }
-    // investment и ownership: показываем животное и долг за содержание.
-    // Прогресс-бара нет — у них нет фиксированного срока, показывать
-    // «сколько прошло из скольких» не от чего.
+    // investment and ownership: show the animal and the boarding debt.
+    // There is no progress bar — they have no fixed term, so there is nothing
+    // to show "how much of how long" against.
     const outstanding = Math.max(0,
       (Number(c.boarding_accrued_tiyin) || 0) - (Number(c.boarding_paid_tiyin) || 0))
     return (
@@ -344,8 +344,8 @@ export default function Contracts() {
               </div>
             )}
 
-            {/* Расчёт до подтверждения: админ должен видеть, что спишется,
-                а не узнавать это из ошибки после нажатия */}
+            {/* The calculation before confirming: the admin should see what will
+                be charged, not learn it from an error after clicking */}
             {selectedOffer && (
               <div style={{
                 background: 'var(--surface-2, #171b26)', borderRadius: 10,

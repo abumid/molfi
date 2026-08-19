@@ -1,9 +1,9 @@
 /**
- * Три главных числа в ряд плюс всё остальное под раскрытием.
+ * Three key numbers in a row, everything else behind a disclosure.
  *
- * Раньше вес, возраст, цена за кг и RFID-метка шли одинаковыми серыми
- * строками — метка выглядела так же важно, как цена. Здесь наверху
- * только то, из чего принимают решение, остальное на один тап дальше.
+ * Weight, age, price per kg and the RFID tag used to be identical grey lines —
+ * the tag looked as important as the price. Here the top holds only what a
+ * decision is made from; the rest is one tap away.
  */
 import { useState } from 'react'
 

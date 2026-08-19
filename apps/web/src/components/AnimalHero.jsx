@@ -3,19 +3,19 @@ import { useState } from 'react'
 const EMOJI = { sheep: '🐑', goat: '🐐', cattle: '🐄' }
 
 /**
- * Шапка карточки животного.
+ * Header of the animal card.
  *
- * Заголовок живёт под картинкой, а не поверх неё: белый текст на светлом
- * кадре или на силуэте не читается, а затемнять весь кадр ради подписи —
- * значит портить единственное фото.
+ * The title sits under the picture, not on top of it: white text on a bright
+ * frame or on a silhouette cannot be read, and darkening the whole frame for
+ * the sake of a caption ruins the only photo there is.
  *
- * Кнопка воспроизведения имеет три состояния, и это не украшательство.
- * Кнопка «смотреть», которая ничего не открывает, хуже её отсутствия:
- * человек жмёт, ничего не происходит, и решает, что приложение сломано.
+ * The play button has three states, and that is not decoration. A "watch"
+ * button that opens nothing is worse than no button: the person taps, nothing
+ * happens, and they decide the app is broken.
  *
- *   1. есть stream_url          → живой эфир, красная точка «в эфире»
- *   2. эфира нет, но есть видео → последняя запись с фермы
- *   3. нет ничего               → подпись «камера появится позже»
+ *   1. stream_url present        → live feed, red "on air" dot
+ *   2. no stream but video exists → the latest recording from the farm
+ *   3. neither                   → caption "camera coming later"
  */
 export default function AnimalHero({
   photo, title, subtitle, species, badge, badgeColor,

@@ -1,11 +1,11 @@
 /**
- * Безопасная обёртка над localStorage.
+ * A safe wrapper around localStorage.
  *
- * Прямое обращение падает в двух случаях, и оба реальны. При предрендере
- * страницы в Node глобального localStorage просто нет. В Safari в приватном
- * режиме он есть, но запись бросает исключение при переполнении квоты.
- * И там, и там падение случается в инициализации компонента, то есть
- * страница не отрисуется вообще.
+ * Touching it directly fails in two cases, and both are real. When the page is
+ * prerendered in Node there is no global localStorage at all. In Safari private
+ * mode it exists, but a write throws once the quota is exceeded. In both cases
+ * the failure happens during component initialisation, which means the page
+ * does not render at all.
  */
 const has = () => {
   try {
@@ -22,7 +22,7 @@ export const store = {
   },
   set(key, value) {
     if (!has()) return
-    try { globalThis.localStorage.setItem(key, String(value)) } catch { /* квота */ }
+    try { globalThis.localStorage.setItem(key, String(value)) } catch { /* quota */ }
   },
   remove(key) {
     if (!has()) return
@@ -30,7 +30,7 @@ export const store = {
   },
 }
 
-/** Системная тема. В Node и в старых браузерах matchMedia может не быть. */
+/** System theme. matchMedia may be missing in Node and in old browsers. */
 export const prefersLight = () => {
   try {
     return Boolean(globalThis.matchMedia?.('(prefers-color-scheme: light)')?.matches)

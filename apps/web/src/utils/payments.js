@@ -1,16 +1,16 @@
 /**
- * Онлайн-оплата.
+ * Online payment.
  *
- * Click и Payme ещё не подключены. Пока флаг снят, кошелёк не делает вид,
- * что кнопки работают: он честно пишет, что способ готовится, и даёт
- * рабочий путь — написать в Telegram, чтобы баланс пополнили вручную
- * через админку. Кнопка, которая молча ничего не делает, хуже отсутствия
- * кнопки: человек думает, что сломалось приложение, и уходит.
+ * Click and Payme are not connected yet. While the flag is off the wallet does
+ * not pretend the buttons work: it says plainly that the method is coming and
+ * offers a working path — message us on Telegram and the balance is topped up
+ * by hand from the admin panel. A button that silently does nothing is worse
+ * than no button: the person thinks the app is broken and leaves.
  *
- * Когда шлюзы появятся: поставить PAYMENTS_LIVE = true и подключить
- * обработчики в Wallet.jsx. Больше в интерфейсе менять нечего.
+ * When the gateways arrive: set PAYMENTS_LIVE = true and wire the handlers in
+ * Wallet.jsx. Nothing else in the interface needs to change.
  */
 export const PAYMENTS_LIVE = false
 
-/** Куда идти за ручным пополнением и выводом, пока шлюзов нет. */
+/** Where to go for a manual top-up or withdrawal while there are no gateways. */
 export const SUPPORT_TELEGRAM = 'https://t.me/molfi_bot'

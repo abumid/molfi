@@ -1,13 +1,13 @@
-# Служба API. Telegram-бот и суточные задания (начисление содержания,
-# отметка просрочек) живут внутри этого же процесса — index.js поднимает
-# их сам, поэтому отдельных служб и записей в cron не нужно.
+# The API service. The Telegram bot and the daily jobs (boarding accrual,
+# marking overdue payments) live inside this same process — index.js starts
+# them itself, so no separate services or cron entries are needed.
 #
-# Установка:
+# Install:
 #   sudo cp deploy/molfi-api.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now molfi-api
 #
-# Логи:  journalctl -u molfi-api -f
+# Logs: journalctl -u molfi-api -f
 
 [Unit]
 Description=Molfi API
@@ -22,15 +22,15 @@ WorkingDirectory=/home/ai/molfi/server
 ExecStart=/usr/bin/node src/index.js
 EnvironmentFile=/home/ai/molfi/server/.env
 
-# Перезапуск при падении, но не бесконечной каруселью: если процесс
-# валится сразу после старта пять раз за минуту, systemd остановится
-# и это будет видно в статусе, а не утонет в логах
+# Restart on failure, but not in an endless carousel: if the process dies right
+# after start five times in a minute, systemd stops and that is visible in the
+# status instead of drowning in the logs
 Restart=on-failure
 RestartSec=5
 StartLimitBurst=5
 StartLimitIntervalSec=60
 
-# Бот держит длинный опрос Telegram; при остановке даём ему закрыться
+# The bot holds a long poll to Telegram; give it time to close on shutdown
 KillSignal=SIGTERM
 TimeoutStopSec=20
 
@@ -38,7 +38,7 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=molfi-api
 
-# Процесс не должен уметь ничего, кроме своей работы
+# The process should be able to do nothing beyond its own job
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

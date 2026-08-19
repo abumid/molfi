@@ -29,14 +29,14 @@ export default function ProductDetail() {
       .then(async (d) => {
         setProduct(d.product)
         setWeights(d.weights || [])
-        // Лента и видео живут у животного, а не у оффера: у рассрочки
-        // животного нет. Ручка отдаёт карточку животного целиком.
+        // The feed and videos belong to the animal, not to the offer: an
+        // instalment has no animal. The endpoint returns the whole animal card.
         if (d.product?.animal_id) {
           try {
             const a = await api.get(`/animals/${d.product.animal_id}`)
             setActivity(a.activity || [])
             setVideos(a.videos || [])
-          } catch { /* лента необязательна, без неё страница работает */ }
+          } catch { /* the feed is optional, the page works without it */ }
         }
       })
       .catch(() => setError(true))
@@ -67,7 +67,7 @@ export default function ProductDetail() {
       <AnimalHero
         photo={product.animal_photo_url || product.photo_url}
         title={title}
-        // Породу не повторяем: она уже в названии оффера
+        // The breed is not repeated: it is already in the offer title
         subtitle={placeLine(product.farm_name, product.farm_location)}
         species={product.animal_species}
         badge={t.models[product.model_type]}
@@ -87,8 +87,8 @@ export default function ProductDetail() {
           { value: age != null ? age : '—', label: t.product.monthsOld },
         ]} />
 
-        {/* Модель объясняем сразу и человеческими словами: разница между
-            инвестицией и владением — не деталь, а суть покупки */}
+        {/* The model is explained upfront and in plain words: the difference
+            between investment and ownership is not a detail, it is the purchase */}
         <div style={{
           display: 'flex', gap: 11, alignItems: 'flex-start', marginTop: 12,
           background: 'var(--color-surface)', border: '1px solid var(--color-border)',
@@ -160,8 +160,8 @@ export default function ProductDetail() {
         )}
       </div>
 
-      {/* Цена уехала вниз к кнопке: раньше она была вверху, и к моменту,
-          когда человек долистывал до действия, он её уже не видел */}
+      {/* The price moved down next to the button: it used to sit at the top, and
+          by the time the person scrolled to the action they no longer saw it */}
       <div style={{
         position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
         width: '100%', maxWidth: 430, boxSizing: 'border-box',

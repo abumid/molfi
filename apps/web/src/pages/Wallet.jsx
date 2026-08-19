@@ -18,8 +18,8 @@ const FILTERS = [
   ['topup', 'filter_topups'],
 ]
 
-// Расход или приход. Список совпадает с INCOME_TYPES на бэкенде —
-// если разъедется, знак в истории будет врать.
+// Money out or money in. The list matches INCOME_TYPES on the backend — if they
+// drift apart, the sign in the history will lie.
 const INCOME = ['payout', 'topup', 'deposit']
 
 const txIcon = (type) => {
@@ -82,10 +82,9 @@ export default function Wallet() {
   const pending = paymentRequests.filter(r => r.status === 'pending')
 
   /**
-   * Пока Click и Payme не подключены, кнопка не притворяется оплатой:
-   * она оставляет заявку, админ её одобряет, и только тогда деньги
-   * двигаются. Кнопка, которая молча ничего не делает, читается как
-   * поломка приложения.
+   * While Click and Payme are not connected the button does not pretend to be a
+   * payment: it files a request, an admin approves it, and only then does money
+   * move. A button that silently does nothing reads as a broken app.
    */
   const submit = async (kind) => {
     const tiyin = Math.round(Number(amount) * 100)
@@ -113,7 +112,7 @@ export default function Wallet() {
     try {
       await api.del(`/payment-requests/${id}`)
       await fetchPaymentRequests()
-    } catch { /* заявку уже рассмотрели — список обновится сам */ }
+    } catch { /* the request was already reviewed — the list refreshes itself */ }
   }
 
   return (
@@ -122,8 +121,8 @@ export default function Wallet() {
         {t.wallet.title}
       </h1>
 
-      {/* Та же карточка, что на каталоге: числа обязаны совпадать,
-          а два похожих блока разъезжаются при первой же правке */}
+      {/* The same card as on the catalogue: the numbers have to match, and two
+          similar blocks drift apart at the first edit */}
       <div style={{ marginBottom: 16 }}>
         <BalanceCard
           onTopUp={() => setShowTopup(true)}

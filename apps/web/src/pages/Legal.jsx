@@ -9,13 +9,13 @@ import { store as ls, prefersLight } from '../utils/storage'
 const THEME_KEY = 'molfi_landing_theme'
 
 /**
- * Оферта и политика конфиденциальности.
+ * Public offer and privacy policy.
  *
- * Страницы публичные и живут в палитре лендинга, а не приложения: на них
- * приходят по ссылке из подвала, ещё не войдя в аккаунт. Тема берётся та
- * же, что человек выбрал на лендинге, — переключать её заново он не должен.
+ * The pages are public and use the landing palette rather than the app one:
+ * people arrive from the footer link before signing in. The theme is the one
+ * chosen on the landing — they should not have to switch it again.
  *
- * @param doc 'offer' или 'privacy'
+ * @param doc 'offer' or 'privacy'
  */
 export default function Legal({ doc }) {
   const navigate = useNavigate()
@@ -73,8 +73,8 @@ export default function Legal({ doc }) {
           {L.title}
         </h1>
 
-        {/* Черновик подписан честно: документ не проходил юриста,
-            и человек имеет право это знать до того, как на него сошлются */}
+        {/* The draft label is honest: the document has not been through a lawyer,
+            and people deserve to know that before anyone relies on it */}
         <div style={{
           display: 'inline-block', marginTop: 12, padding: '6px 12px', borderRadius: 20,
           background: 'rgba(212,168,67,.15)', border: '1px solid var(--land-gold)',

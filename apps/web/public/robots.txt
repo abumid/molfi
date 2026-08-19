@@ -3,8 +3,8 @@ Allow: /$
 Allow: /offer
 Allow: /privacy
 
-# Кабинет индексировать незачем: он за формой входа и краулер увидит
-# только экран авторизации
+# There is no point indexing the account area: it sits behind the sign-in form
+# and a crawler would only see the login screen
 Disallow: /auth
 Disallow: /catalog
 Disallow: /product

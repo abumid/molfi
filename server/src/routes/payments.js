@@ -10,7 +10,7 @@ const router = Router()
 const loadContract = (id) =>
   pool.query(`SELECT * FROM contracts WHERE id = $1`, [id]).then(r => r.rows[0])
 
-// ── график ────────────────────────────────────────────────
+// ── schedule ──────────────────────────────────────────────
 
 router.get('/payments/schedule/:contractId', requireAuth, asyncHandler(async (req, res) => {
   const contract = await loadContract(req.params.contractId)
@@ -32,7 +32,7 @@ router.get('/payments/schedule/:contractId', requireAuth, asyncHandler(async (re
   ok(res, { schedule: withFees, summary: installmentSummary(contract, schedule) })
 }))
 
-// ── оплата очередного платежа ─────────────────────────────
+// ── paying the next instalment ────────────────────────────
 
 router.post('/payments/pay', requireAuth, asyncHandler(async (req, res) => {
   const { contract_id, schedule_id } = req.body
@@ -54,8 +54,8 @@ router.post('/payments/pay', requireAuth, asyncHandler(async (req, res) => {
     }
     if (contract.status === 'cancelled') { await client.query('ROLLBACK'); return fail(res, 'contract_cancelled') }
 
-    // Конкретный платёж или ближайший неоплаченный. Блокируем строку,
-    // иначе двойной тап по кнопке оплатит один платёж дважды.
+    // A specific instalment, or the nearest unpaid one. The row is locked,
+    // otherwise a double tap on the button pays one instalment twice.
     const installment = (await client.query(
       schedule_id
         ? `SELECT * FROM payment_schedule WHERE id = $2 AND contract_id = $1 FOR UPDATE`
@@ -104,7 +104,7 @@ router.post('/payments/pay', requireAuth, asyncHandler(async (req, res) => {
        `Instalment ${installment.seq} of contract #${contract_id}` + (penalty ? ` (late fee ${penalty})` : '')]
     )
 
-    // Последний платёж закрывает договор
+    // The last instalment closes the contract
     const left = (await client.query(
       `SELECT count(*)::int AS n FROM payment_schedule
        WHERE contract_id = $1 AND status NOT IN ('paid','waived')`,
@@ -130,7 +130,7 @@ router.post('/payments/pay', requireAuth, asyncHandler(async (req, res) => {
   }
 }))
 
-// ── админ ─────────────────────────────────────────────────
+// ── admin ─────────────────────────────────────────────────
 
 router.post('/admin/payments/:id/waive', requireAdmin, asyncHandler(async (req, res) => {
   const client = await pool.connect()
@@ -149,7 +149,7 @@ router.post('/admin/payments/:id/waive', requireAdmin, asyncHandler(async (req, 
       [req.params.id]
     )).rows[0]
 
-    // Прощённый платёж тоже закрывает договор, если он был последним
+    // A waived instalment also closes the contract if it was the last one
     const left = (await client.query(
       `SELECT count(*)::int AS n FROM payment_schedule
        WHERE contract_id = $1 AND status NOT IN ('paid','waived')`,
@@ -174,10 +174,10 @@ router.post('/admin/payments/:id/waive', requireAdmin, asyncHandler(async (req, 
 }))
 
 /**
- * Отметить платёж полученным, минуя кошелёк. Нужно, когда клиент заплатил
- * наличными или переводом на счёт фермы: деньги пришли, но не через платформу.
- * Кошелёк и transactions намеренно не трогаем — иначе баланс покажет средства,
- * которых у клиента на платформе нет, и сверка перестанет сходиться.
+ * Mark an instalment as received, bypassing the wallet. Needed when the client
+ * paid in cash or by transfer to the farm account: the money arrived, but not
+ * through the platform. The wallet and transactions are deliberately untouched —
+ * otherwise the balance shows funds the client does not have, and reconciliation stops adding up.
  */
 router.post('/admin/payments/:id/mark-paid', requireAdmin, asyncHandler(async (req, res) => {
   const client = await pool.connect()
@@ -230,9 +230,9 @@ router.post('/admin/payments/:id/mark-paid', requireAdmin, asyncHandler(async (r
 }))
 
 /**
- * Оплата накопленной абонплаты за содержание.
- * Нужна модели ownership: там нет продажи, из выручки долг не погасить,
- * поэтому клиент гасит его с кошелька сам.
+ * Paying off the accumulated boarding fee.
+ * Needed by the ownership model: there is no sale there, so the debt cannot be
+ * settled out of proceeds — the client pays it from the wallet instead.
  */
 router.post('/payments/boarding', requireAuth, asyncHandler(async (req, res) => {
   const { contract_id, amount_tiyin } = req.body
@@ -251,7 +251,7 @@ router.post('/payments/boarding', requireAuth, asyncHandler(async (req, res) => 
     const outstanding = boardingOutstanding(contract)
     if (outstanding <= 0) { await client.query('ROLLBACK'); return fail(res, 'nothing_to_pay') }
 
-    // Частичная оплата разрешена: долг за год может быть неподъёмным разом
+    // Partial payment is allowed: a year of debt can be too much in one go
     const amount = amount_tiyin ? Math.min(Number(amount_tiyin), outstanding) : outstanding
     if (amount <= 0) { await client.query('ROLLBACK'); return fail(res, 'invalid_amount') }
 
@@ -288,12 +288,12 @@ router.post('/payments/boarding', requireAuth, asyncHandler(async (req, res) => 
 }))
 
 /**
- * Оплата содержания, записанная админом.
+ * A boarding payment recorded by an admin.
  *
- * from_wallet = true  — клиент платит с баланса на платформе, как из приложения
- * from_wallet = false — деньги пришли наличными или переводом мимо платформы:
- *                       долг гасим, кошелёк не трогаем, иначе баланс покажет
- *                       средства, которых у клиента здесь нет
+ * from_wallet = true  — the client pays from the platform balance, as in the app
+ * from_wallet = false — the money came in cash or by transfer outside the
+ *                       platform: the debt is settled, the wallet is untouched,
+ *                       or the balance would show funds not held here
  */
 router.post('/admin/contracts/:id/boarding', requireAdmin, asyncHandler(async (req, res) => {
   const { amount_tiyin, from_wallet = false } = req.body
@@ -310,7 +310,7 @@ router.post('/admin/contracts/:id/boarding', requireAdmin, asyncHandler(async (r
     const outstanding = boardingOutstanding(contract)
     if (outstanding <= 0) { await client.query('ROLLBACK'); return fail(res, 'nothing_to_pay') }
 
-    // Частичная оплата разрешена: долг за год может быть неподъёмным разом
+    // Partial payment is allowed: a year of debt can be too much in one go
     const amount = amount_tiyin ? Math.min(Number(amount_tiyin), outstanding) : outstanding
     if (amount <= 0) { await client.query('ROLLBACK'); return fail(res, 'invalid_amount') }
 
@@ -370,20 +370,20 @@ router.get('/admin/payments', requireAdmin, asyncHandler(async (req, res) => {
 }))
 
 // ─────────────────────────────────────────────────────────────
-// Заявки на пополнение и вывод
+// Top-up and withdrawal requests
 //
-// Пока Click и Payme не подключены, деньги двигает админ. Клиент
-// оставляет заявку с суммой, админ одобряет — и только в этот момент
-// создаётся транзакция и меняется баланс. Заявка сама по себе на
-// баланс не влияет: иначе человек «пополнил» бы кошелёк, ничего
-// не заплатив.
+// Until Click and Payme are connected, an admin moves the money. The client
+// leaves a request with an amount, an admin approves it — and only at that
+// moment is a transaction created and the balance changed. A request on its
+// own does not affect the balance: otherwise someone could "top up" their
+// wallet without paying anything.
 // ─────────────────────────────────────────────────────────────
 
 const REQUEST_KINDS = ['topup', 'withdrawal']
 
-// Защита от опечатки в лишний ноль и от заявок на копейку
-const MIN_REQUEST_TIYIN = 1000 * 100      // 1 000 сум
-const MAX_REQUEST_TIYIN = 500_000_000 * 100 // 500 млн сум
+// Guards against a typo adding a zero, and against requests for pennies
+const MIN_REQUEST_TIYIN = 1000 * 100      // 1,000 sum
+const MAX_REQUEST_TIYIN = 500_000_000 * 100 // 500 million sum
 
 router.post('/payment-requests', requireAuth, asyncHandler(async (req, res) => {
   const { kind, amount_tiyin, note } = req.body
@@ -393,16 +393,16 @@ router.post('/payment-requests', requireAuth, asyncHandler(async (req, res) => {
   if (!Number.isFinite(amount) || amount < MIN_REQUEST_TIYIN) return fail(res, 'amount_too_small')
   if (amount > MAX_REQUEST_TIYIN) return fail(res, 'amount_too_large')
 
-  // Одна незакрытая заявка на вид: иначе человек накидает десяток
-  // одинаковых, а админ будет гадать, какую одобрять
+  // One open request per kind: otherwise someone piles up a dozen identical
+  // ones and the admin has to guess which to approve
   const pending = (await pool.query(
     `SELECT id FROM payment_requests WHERE user_id=$1 AND kind=$2 AND status='pending'`,
     [req.user.id, kind]
   )).rows[0]
   if (pending) return fail(res, 'request_already_pending')
 
-  // Вывести больше, чем лежит свободного, нельзя — проверяем сразу,
-  // чтобы человек не ждал отказа сутки
+  // Withdrawing more than the free balance is not allowed — checked upfront so
+  // the person does not wait a day for a refusal
   if (kind === 'withdrawal') {
     const wallet = (await pool.query(
       `SELECT balance_tiyin FROM wallet_balances WHERE user_id=$1`, [req.user.id]
@@ -427,7 +427,7 @@ router.get('/payment-requests', requireAuth, asyncHandler(async (req, res) => {
   ok(res, { requests })
 }))
 
-/** Отменить свою заявку, пока её не рассмотрели. */
+/** Cancel your own request while it is still under review. */
 router.delete('/payment-requests/:id', requireAuth, asyncHandler(async (req, res) => {
   const deleted = (await pool.query(
     `DELETE FROM payment_requests
@@ -459,8 +459,8 @@ router.post('/admin/payment-requests/:id/approve', requireAdmin, asyncHandler(as
   try {
     await client.query('BEGIN')
 
-    // Блокируем заявку: два админа могут нажать «одобрить» одновременно,
-    // и без замка деньги начислятся дважды
+    // The request is locked: two admins can press "approve" at the same time,
+    // and without the lock the money would be credited twice
     const request = (await client.query(
       `SELECT * FROM payment_requests WHERE id=$1 FOR UPDATE`, [req.params.id]
     )).rows[0]
@@ -483,7 +483,7 @@ router.post('/admin/payment-requests/:id/approve', requireAdmin, asyncHandler(as
       [request.user_id]
     )).rows[0]
 
-    // Баланс мог упасть за время ожидания — покупкой или другой выплатой
+    // The balance may have dropped while waiting — a purchase or another payout
     if (!isTopup && Number(wallet.balance_tiyin) < amount) {
       await client.query('ROLLBACK')
       return fail(res, 'insufficient_balance')

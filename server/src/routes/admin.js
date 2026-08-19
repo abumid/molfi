@@ -6,10 +6,10 @@ import { requireAdmin } from '../middleware/auth.js'
 
 const router = Router()
 
-// Типы транзакций, которые увеличивают баланс пользователя (доход).
-// Раньше 'topup' не входил в этот список в двух местах ниже, из-за чего
-// редактирование/удаление пополнения через админку сдвигало баланс в
-// обратную сторону.
+// Transaction types that increase the user balance (income).
+// 'topup' used to be missing from this list in two places below, which made
+// editing or deleting a top-up through the admin panel move the balance in the
+// opposite direction.
 const INCOME_TYPES = ['deposit', 'payout', 'topup']
 
 
@@ -31,7 +31,7 @@ router.put('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
   const { id } = req.params
   const { name, phone, password, balance_tiyin, role } = req.body
 
-  // Обновить данные юзера
+  // Update the user record
   await pool.query(`
     UPDATE users SET
       name = COALESCE($1, name),
@@ -40,10 +40,10 @@ router.put('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
     WHERE id = $4
   `, [name || null, phone || null, role || null, id])
 
-  // Обновить пароль если передан.
-  // Минимум тот же, что и при регистрации (routes/auth.js): иначе через
-  // админку можно было выставить пароль из одного символа, и требование
-  // на клиенте не значило бы ничего.
+  // Update the password if one was sent.
+  // The minimum is the same as at sign-up (routes/auth.js): otherwise the admin
+  // panel could set a one-character password, and the requirement on the client
+  // would mean nothing.
   if (password && password.trim()) {
     if (password.trim().length < 6) return fail(res, 'Password must be at least 6 characters')
     const hash = await bcrypt.hash(password.trim(), 10)
@@ -53,11 +53,11 @@ router.put('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
     )
   }
 
-  // Обновить баланс если передан
+  // Update the balance if one was sent
   if (balance_tiyin !== undefined && balance_tiyin !== null) {
     const balNum = Number(balance_tiyin)
 
-    // Получить текущий баланс
+    // Read the current balance
     const cur = await pool.query(
       'SELECT COALESCE(balance_tiyin, 0) as balance_tiyin FROM wallet_balances WHERE user_id = $1',
       [id]
@@ -67,7 +67,7 @@ router.put('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
 
     console.log(`Balance update: user=${id}, current=${currentBal}, new=${balNum}, diff=${diff}`)
 
-    // Обновить баланс
+    // Update the balance
     await pool.query(`
       INSERT INTO wallet_balances (user_id, balance_tiyin)
       VALUES ($1, $2)
@@ -75,7 +75,7 @@ router.put('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
       DO UPDATE SET balance_tiyin = $2
     `, [id, balNum])
 
-    // Создать транзакцию если есть разница
+    // Create a transaction if there is a difference
     if (diff !== 0) {
       const txType = diff > 0 ? 'deposit' : 'withdrawal'
       const txDesc = diff > 0
@@ -232,15 +232,15 @@ router.delete('/transactions/:id', requireAdmin, asyncHandler(async (req, res) =
 }))
 
 
-// Все ручки по животным переехали в routes/animals.js:
+// All animal endpoints moved to routes/animals.js:
 //   /admin/sheep        -> /admin/animals
-//   /admin/sheep/:id/sell -> /admin/animals/:id/sell (выплата владельцу, не дольщикам)
-// /admin/sheep/:id/unsell удалён: откатывал выплаты по долям, которых больше нет.
+//   /admin/sheep/:id/sell -> /admin/animals/:id/sell (payout to the owner, not to shareholders)
+// /admin/sheep/:id/unsell was removed: it rolled back share payouts that no longer exist.
 
 
 
 
-// Договоры конкретного пользователя — для карточки в списке
+// One user's contracts — for the card in the list
 router.get('/users/:id/contracts', requireAdmin, asyncHandler(async (req, res) => {
   const contracts = (await pool.query(`
     SELECT c.*, p.title_en, p.title_ru, p.title_uz,
@@ -256,8 +256,8 @@ router.get('/users/:id/contracts', requireAdmin, asyncHandler(async (req, res) =
   ok(res, { contracts })
 }))
 
-// Сводка для дашборда одним запросом: шесть отдельных вызовов
-// с фронта дали бы шесть round-trip'ов на каждое открытие страницы
+// Dashboard summary in a single query: six separate calls from the front end
+// would mean six round-trips on every page open
 router.get('/stats', requireAdmin, asyncHandler(async (req, res) => {
   const [animals, users, contracts, byModel, payments, dueThisMonth] = await Promise.all([
     pool.query(`SELECT count(*)::int AS total,
@@ -290,8 +290,8 @@ router.get('/stats', requireAdmin, asyncHandler(async (req, res) => {
   })
 }))
 
-// Создание пользователя вручную. Нужно, когда клиент пришёл офлайн:
-// оформить договор на него нельзя, пока учётки нет.
+// Creating a user by hand. Needed when the client came in offline: a contract
+// cannot be made out to them until an account exists.
 router.post('/users', requireAdmin, asyncHandler(async (req, res) => {
   const { phone, name, password, role, balance_tiyin } = req.body
   if (!phone?.trim()) return fail(res, 'phone required')
@@ -321,8 +321,8 @@ router.post('/users', requireAdmin, asyncHandler(async (req, res) => {
       [normalized, name?.trim() || null, hash, role === 'admin' ? 'admin' : 'user', ref]
     )).rows[0]
 
-    // Кошелёк заводим всегда: без строки в wallet_balances списание
-    // при оформлении договора упрётся в отсутствующую запись
+    // A wallet is always created: without a row in wallet_balances the charge
+    // at contract checkout runs into a missing record
     const initial = Number(balance_tiyin) || 0
     await client.query(
       `INSERT INTO wallet_balances (user_id, balance_tiyin) VALUES ($1,$2)`,
@@ -347,7 +347,7 @@ router.post('/users', requireAdmin, asyncHandler(async (req, res) => {
 }))
 
 router.delete('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
-  // Пользователя с живым договором не удаляем — за ним стоят деньги
+  // A user with a live contract is not deleted — there is money behind them
   const active = (await pool.query(
     `SELECT count(*)::int AS n FROM contracts
      WHERE user_id = $1 AND status IN ('pending','active')`,
@@ -375,9 +375,9 @@ router.delete('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
   }
 }))
 
-// Ручная транзакция. Баланс двигается по тому же правилу, что и при
-// правке существующей: типы из INCOME_TYPES увеличивают, остальные
-// уменьшают. Иначе история и кошелёк разъедутся.
+// A manual transaction. The balance moves by the same rule as when editing an
+// existing one: types in INCOME_TYPES increase it, the rest decrease it.
+// Otherwise the history and the wallet drift apart.
 router.post('/transactions', requireAdmin, asyncHandler(async (req, res) => {
   const { user_id, type, amount_tiyin, description, contract_id } = req.body
   if (!user_id) return fail(res, 'user_id required')

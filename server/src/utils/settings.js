@@ -1,16 +1,16 @@
-// Чтение таблицы settings с кэшем в памяти.
+// Reading the settings table with an in-memory cache.
 //
-// Настройки меняются редко, а читаются на каждый расчёт комиссии — ходить
-// в базу каждый раз незачем. Кэш держим 60 секунд; после PUT /api/admin/settings
-// сбрасываем вручную через invalidateSettings(), чтобы админ видел эффект сразу,
-// а не через минуту.
+// Settings change rarely but are read on every fee calculation, so hitting
+// the database every time is pointless. The cache lives 60 seconds; after
+// PUT /api/admin/settings it is dropped by hand via invalidateSettings(), so
+// the admin sees the effect at once instead of a minute later.
 
 import { pool } from '../db/pool.js'
 
 const TTL_MS = 60 * 1000
 
-// Значения на случай, если строки в базе нет вообще. Совпадают с тем,
-// что засевает миграция, — чтобы поведение не разъезжалось.
+// Values used when the row is missing from the database entirely. They match
+// what the migration seeds, so behaviour cannot drift apart.
 const FALLBACK = {
   boarding_fee_monthly_tiyin: '4000000',
   purchase_fee_bp: '0',
@@ -38,9 +38,9 @@ const load = async () => {
 }
 
 /**
- * Все настройки разом. Параллельные вызовы на холодном кэше схлопываются
- * в один запрос — иначе на старте под нагрузкой получим десяток
- * одинаковых SELECT.
+ * All settings at once. Concurrent calls on a cold cache collapse into a
+ * single query — otherwise a loaded start-up would fire a dozen identical
+ * SELECTs.
  */
 export const getSettings = async () => {
   if (!isStale()) return cache
@@ -49,15 +49,15 @@ export const getSettings = async () => {
   return inflight
 }
 
-/** Строковое значение настройки. */
+/** A setting as a string. */
 export const getSetting = async (key) => {
   const s = await getSettings()
   return s[key] ?? FALLBACK[key] ?? null
 }
 
 /**
- * Числовое значение. Возвращает fallback, если в базе мусор —
- * молча вернуть NaN хуже, чем работать по значению по умолчанию.
+ * A setting as a number. Returns the fallback when the stored value is junk —
+ * silently returning NaN is worse than working off the default.
  */
 export const getSettingInt = async (key) => {
   const raw = await getSetting(key)
@@ -67,18 +67,18 @@ export const getSettingInt = async (key) => {
   return Number.isFinite(fb) ? fb : 0
 }
 
-/** Сброс кэша. Вызывать после любой записи в settings. */
+/** Drop the cache. Call after any write to settings. */
 export const invalidateSettings = () => {
   cache = null
   loadedAt = 0
 }
 
-/** Абонплата за содержание по умолчанию. Оффер может её переопределить. */
+/** Default monthly boarding fee. An offer may override it. */
 export const boardingFeeMonthly = () => getSettingInt('boarding_fee_monthly_tiyin')
 
 /**
- * Тарифы одним объектом — расчётам нужны все три сразу, а ходить
- * за каждым отдельно значит трижды пройти по одному и тому же кэшу.
+ * Tariffs as a single object — the math needs all three at once, and fetching
+ * them one by one would walk the same cache three times.
  */
 export const feeRates = async () => ({
   purchaseFeeBp: await getSettingInt('purchase_fee_bp'),
@@ -87,9 +87,9 @@ export const feeRates = async () => ({
 })
 
 /**
- * Какие модели сейчас открыты. Держим в settings, а не в коде, чтобы
- * включить или спрятать модель можно было без деплоя. Мусор в значении
- * игнорируем, но пустой список не отдаём — иначе витрина умрёт молча.
+ * Which models are currently open. Kept in settings rather than in code so a
+ * model can be enabled or hidden without a deploy. Junk values are ignored,
+ * but an empty list is never returned — the catalogue would die silently.
  */
 export const enabledModels = async () => {
   const raw = await getSetting('models_enabled')

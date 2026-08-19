@@ -6,8 +6,8 @@ import { getSettings, invalidateSettings, ALL_MODELS } from '../utils/settings.j
 
 const router = Router()
 
-// Ставки храним в базисных пунктах, а показываем в процентах.
-// Список — чтобы админка знала, какие поля рисовать со знаком %.
+// Rates are stored in basis points and shown as percentages.
+// The list tells the admin panel which fields to render with a % sign.
 const BP_KEYS = ['platform_fee_bp', 'late_fee_bp']
 
 const INT_KEYS = [
@@ -68,7 +68,7 @@ router.put('/admin/settings', requireAdmin, asyncHandler(async (req, res) => {
     client.release()
   }
 
-  // Без сброса админ ждал бы до минуты, гадая, применилось ли
+  // Without the reset the admin would wait up to a minute, unsure it applied
   invalidateSettings()
 
   ok(res, { settings: await getSettings() })

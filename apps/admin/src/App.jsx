@@ -48,7 +48,7 @@ export default function App() {
         <Route path="/transactions" element={<Guard><Transactions /></Guard>} />
         <Route path="/requests" element={<Guard><Requests /></Guard>} />
         <Route path="/settings" element={<Guard><Settings /></Guard>} />
-        {/* Старые адреса: /sheep и /shares из v1 */}
+        {/* Legacy addresses: /sheep and /shares from v1 */}
         <Route path="/sheep" element={<Navigate to="/animals" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

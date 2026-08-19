@@ -15,12 +15,12 @@ export default function Profile() {
 
   useEffect(() => { fetchContracts() }, [])
 
-  // Статистика по договорам, а не по долям — долевого владения больше нет
+  // Statistics by contract, not by share — fractional ownership is gone
   const active = contracts.filter(c => c.status === 'active')
   const totalInvested = active.reduce((sum, c) => sum + (Number(c.principal_tiyin) || 0), 0)
   const activeShares = active.length
-  // Сколько выйдет, если продать всё сегодня. Только инвестиции:
-  // у владения выход мясом, в деньгах он не считается.
+  // What a sale of everything today would yield. Investments only: ownership
+  // exits as meat and does not count in money.
   const expectedNow = active
     .filter(c => c.model_type === 'investment')
     .reduce((sum, c) => sum + (Number(c.summary?.net) || 0), 0)
@@ -50,7 +50,7 @@ export default function Profile() {
       minHeight: '100vh'
     }}>
 
-      {/* Заголовок */}
+      {/* Header */}
       <h1 style={{
         fontFamily: 'Unbounded, sans-serif',
         fontSize: 22,
@@ -59,7 +59,7 @@ export default function Profile() {
         {t.profile.title}
       </h1>
 
-      {/* Аватар + имя */}
+      {/* Avatar + name */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -70,7 +70,7 @@ export default function Profile() {
         padding: 20,
         marginBottom: 16
       }}>
-        {/* Аватар */}
+        {/* Avatar */}
         <div style={{
           width: 64,
           height: 64,
@@ -87,7 +87,7 @@ export default function Profile() {
             : user?.phone?.slice(-2) || '?'}
         </div>
 
-        {/* Имя и телефон */}
+        {/* Name and phone */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {editing ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -175,7 +175,7 @@ t.profile.name_placeholder}
         </div>
       </div>
 
-      {/* Статистика */}
+      {/* Statistics */}
       <div style={{
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
@@ -195,7 +195,7 @@ t.profile.name_placeholder}
           {t.profile.stats}
         </div>
 
-        {/* Баланс */}
+        {/* Balance */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -211,7 +211,7 @@ t.profile.name_placeholder}
           </span>
         </div>
 
-        {/* Вложено */}
+        {/* Invested */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -227,7 +227,7 @@ t.profile.name_placeholder}
           </span>
         </div>
 
-        {/* Активных долей */}
+        {/* Active shares */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -243,7 +243,7 @@ t.profile.name_placeholder}
           </span>
         </div>
 
-        {/* Ожидаемая выплата */}
+        {/* Expected payout */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -259,7 +259,7 @@ t.profile.name_placeholder}
         </div>
       </div>
 
-      {/* Язык */}
+      {/* Language */}
       <div style={{
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
@@ -284,7 +284,7 @@ t.profile.name_placeholder}
         </div>
       </div>
 
-      {/* Выход */}
+      {/* Sign out */}
       <div style={{
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
@@ -317,7 +317,7 @@ t.profile.logout_confirm)) logout()
         </button>
       </div>
 
-      {/* Версия */}
+      {/* Version */}
       <div style={{
         textAlign: 'center',
         color: 'var(--color-text-muted)',

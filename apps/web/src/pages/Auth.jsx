@@ -6,8 +6,8 @@ import { useT } from '../i18n'
 import { api } from '../utils/api'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 
-// SDK v3: raw initData берётся через retrieveRawInitData(),
-// а launch params возвращают tgWebAppData (НЕ initDataRaw / initData)
+// SDK v3: raw initData comes from retrieveRawInitData(), and launch params
+// return tgWebAppData (NOT initDataRaw / initData)
 const getTelegramData = () => {
   try {
     const initData = retrieveRawInitData()
@@ -250,9 +250,9 @@ export default function Auth() {
 
   const apiPhone = toApiPhone(phone)
 
-  // Куда вернуть после входа: PrivateRoute кладёт сюда путь, с которого
-  // человека развернули. Иначе он логинится и попадает в каталог, забыв,
-  // какого барана открывал.
+  // Where to return after sign-in: PrivateRoute puts the path the person was
+  // turned away from here. Otherwise they log in and land in the catalogue,
+  // having forgotten which ram they had open.
   const returnTo = location.state?.from || '/catalog'
 
   const goCatalog = (token, user) => {

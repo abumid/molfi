@@ -1,16 +1,16 @@
-// Начисление абонплаты за содержание.
+// Boarding fee accrual.
 //
-// Заменяет прежний accrueInterest: модели с фиксированной ставкой у нас нет,
-// начислять проценты не с чего. Зато есть плата за уход, и она начисляется
-// помесячно по всем живым договорам с животным.
+// Replaces the old accrueInterest: there is no fixed-rate model here, so there
+// is no interest to accrue. There is a care fee instead, and it accrues monthly
+// on every live contract that has an animal.
 //
-// Что происходит с начисленным:
-//   investment — копится долгом и гасится из выручки при продаже
-//   ownership  — копится долгом, клиент гасит его через /payments
+// What happens to the accrued amount:
+//   investment — builds up as debt, settled out of the sale proceeds
+//   ownership  — builds up as debt, the client pays it off via /payments
 //
-// Идемпотентность держится на boarding_accrued_until: задача считает
-// только полные месяцы, прошедшие с этой даты, и двигает её вперёд.
-// Повторный запуск в тот же день добавит ноль месяцев.
+// Idempotency rests on boarding_accrued_until: the job counts only whole
+// months elapsed since that date and then moves it forward. Running it again
+// on the same day adds zero months.
 
 import 'dotenv/config'
 import { pool } from '../db/pool.js'
@@ -51,11 +51,11 @@ export const accrueBoarding = async ({ asOf = new Date(), log = console.log } = 
     totalTiyin += amount
   }
 
-  log(`[accrueBoarding] договоров ${contracts.length}, начислено по ${touched} за ${months} мес., итого ${totalTiyin} тийин`)
+  log(`[accrueBoarding] contracts ${contracts.length}, accrued on ${touched} for ${months} mo., total ${totalTiyin} tiyin`)
   return { contracts: contracts.length, touched, months, totalTiyin }
 }
 
-// Ручной запуск: npm run job:boarding
+// Manual run: npm run job:boarding
 if (import.meta.url === `file://${process.argv[1]}`) {
   await accrueBoarding()
   process.exit(0)

@@ -1,14 +1,14 @@
 /**
- * Логотип Molfi.
+ * The Molfi logo.
  *
- * Вариантов два. Фирменный тёмно-зелёный на фоне #0a0f0a даёт контраст
- * 2,5:1 — надпись «Mol» на тёмном почти пропадает. Для тёмных фонов
- * зелёный осветлён в HSV: тон сохранён, поднята яркость. Золото и белая
- * шерсть работают на обоих фонах и не тронуты.
+ * There are two variants. The brand dark green on a #0a0f0a background gives a
+ * 2.5:1 contrast ratio — the word "Mol" almost disappears on dark. For dark
+ * backgrounds the green is lightened in HSV: hue kept, value raised. The gold
+ * and the white fleece work on both and are untouched.
  *
- * Отдаём WebP с запасным PNG: WebP втрое легче при том же качестве,
- * а <picture> сам выберет, что браузер понимает. Для страницы, которую
- * открывают по мобильному интернету, 36 КБ вместо 114 — это заметно.
+ * Served as WebP with a PNG fallback: WebP is three times lighter at the same
+ * quality, and <picture> picks whatever the browser understands. For a page
+ * opened over mobile data, 36 KB instead of 114 is noticeable.
  */
 
 const FILES = {
@@ -26,7 +26,7 @@ function Picture({ base, alt, style, width, height }) {
 }
 
 /**
- * @param on фон, на котором стоит логотип: 'dark' или 'light'
+ * @param on the background the logo sits on: 'dark' or 'light'
  */
 export function SheepIcon({ size = 40, on = 'dark' }) {
   return (
@@ -37,7 +37,7 @@ export function SheepIcon({ size = 40, on = 'dark' }) {
   )
 }
 
-/** Знак с надписью. Логотип вертикальный, поэтому размер задаётся высотой. */
+/** Mark with wordmark. The logo is vertical, so the size is given as a height. */
 export default function MolfiLogo({ size = 44, on = 'dark', variant = 'full' }) {
   if (variant === 'mark') return <SheepIcon size={size} on={on} />
   return (

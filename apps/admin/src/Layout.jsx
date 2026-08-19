@@ -8,8 +8,8 @@ export default function Layout({ children, title }) {
   const { admin, logout, language, setLanguage } = useStore()
   const t = useT(language)
 
-  // Девять пунктов — сайдбар плотный, поэтому разбит на две группы.
-  // Ферма — то, чем управляет зоотехник; продажи — то, чем финансист.
+  // Nine items make for a dense sidebar, so it is split into two groups.
+  // Farm is what the livestock specialist runs; sales is what finance runs.
   const GROUPS = [
     {
       items: [

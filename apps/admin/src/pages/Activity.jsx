@@ -19,11 +19,11 @@ const EMPTY_FORM = {
 }
 
 /**
- * Результат осмотра хранится ключом healthy / treatment, а не словом
- * «Здоров». Русский текст в роли значения ломался при первой же правке
- * формулировки, и бэкенд его всё равно не принимал — он с самого начала
- * ждал ключ, из-за чего ветеринарное событие вообще не создавалось.
- * Старые записи с result_ru читаем, чтобы история не осыпалась.
+ * The inspection result is stored under the key healthy / treatment, not as a
+ * word. Russian text used as a value broke the moment the wording was edited,
+ * and the backend did not accept it anyway — it expected a key from the start,
+ * which is why the vet event was never created at all.
+ * Old records carrying result_ru are still read so the history does not fall apart.
  */
 const vetResultOf = (meta) => {
   if (!meta) return null
@@ -75,8 +75,8 @@ export default function Activity() {
 
   useEffect(() => {
     if (!selectedAnimalId) return
-    // Флаг живости: если быстро переключать животных, ответ по первому
-    // может прийти последним и подменить ленту чужими событиями
+    // Liveness flag: switching animals quickly can make the response for the
+    // first arrive last and fill the feed with someone else's events
     let alive = true
     const run = async () => {
       setLoading(true)
@@ -199,7 +199,7 @@ export default function Activity() {
     return t('common.none')
   }
 
-  /** Переводы события заводятся вкладками: шесть полей подряд не читаются. */
+  /** Event translations go in tabs: six fields in a row cannot be read. */
   const langTabs = (
     <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
       {LANGS.map(l => (
@@ -463,8 +463,8 @@ export default function Activity() {
               <button className="btn btn-secondary btn-sm" onClick={() => setEditItem(null)}>✕</button>
             </div>
 
-            {/* Тип менять нельзя: от него зависит форма meta, и смена
-                типа осиротила бы уже записанные детали */}
+            {/* The type cannot be changed: the meta form depends on it, and
+                switching would orphan the details already recorded */}
             <div className="form-group">
               <label className="form-label">{t('activity.eventType')}</label>
               <select className="form-select" value={editItem.type} disabled>

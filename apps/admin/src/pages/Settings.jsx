@@ -6,8 +6,8 @@ import { useT } from '../i18n'
 
 const ALL_MODELS = ['investment', 'ownership', 'installment']
 
-// Как показывать каждую настройку. Базисные пункты и тийины хранятся
-// в базе как целые, а вводятся в привычных единицах — проценты и сумы.
+// How to display each setting. Basis points and tiyin are stored in the database
+// as integers but entered in familiar units — percentages and sums.
 const FIELDS = [
   { key: 'boarding_fee_monthly_tiyin', kind: 'tiyin' },
   { key: 'purchase_fee_bp', kind: 'bp' },
@@ -76,8 +76,8 @@ export default function Settings() {
         const stored = toStored(f.kind, values[f.key])
         if (stored !== null) patch[f.key] = stored
       }
-      // Эта ручка на бэкенде сбрасывает кэш настроек, поэтому изменения
-      // применяются сразу, а не через минуту
+      // This endpoint drops the settings cache on the backend, so changes apply
+      // immediately rather than after a minute
       await api.put('/admin/settings', patch)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)

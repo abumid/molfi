@@ -49,9 +49,9 @@ function ProfileIcon({ active }) {
   )
 }
 
-// «Мои активы» — обязательная вкладка, а не удобство: после покупки оффер
-// уходит в sold_out и исчезает с витрины, и без этого входа владелец
-// теряет своё животное из виду.
+// "My assets" is a required tab, not a convenience: after a purchase the offer
+// goes sold_out and vanishes from the catalogue, and without this entry point
+// the owner loses sight of their animal.
 const NAV = [
   { path: '/catalog', key: 'catalog', Icon: CatalogIcon },
   { path: '/contracts', key: 'assets', Icon: AssetsIcon, badge: true },
@@ -66,9 +66,9 @@ export default function BottomNav() {
   const contracts = useStore(s => s.contracts)
   const t = useT(language)
 
-  // Точка на вкладке, когда есть неоплаченный уход. Долг по содержанию —
-  // единственное, что требует действия клиента, и он не должен узнавать
-  // о нём из просрочки.
+  // A dot on the tab when care is unpaid. Boarding debt is the only thing that
+  // needs action from the client, and they should not learn about it from an
+  // overdue notice.
   const owes = contracts.some(c =>
     c.status === 'active' &&
     (Number(c.boarding_accrued_tiyin) || 0) > (Number(c.boarding_paid_tiyin) || 0))

@@ -16,9 +16,9 @@ import ContractDetail from './pages/ContractDetail'
 import Wallet from './pages/Wallet'
 import Profile from './pages/Profile'
 
-// Меню показываем на корневых экранах. На карточках и оформлении его нет
-// намеренно: там своя нижняя кнопка действия, две панели друг на друге
-// перекрывают контент.
+// The menu is shown on root screens. It is deliberately absent on detail and
+// checkout screens: those have their own bottom action button, and two bars on
+// top of each other cover the content.
 const NAV_PATHS = ['/catalog', '/contracts', '/wallet', '/profile']
 
 function LoadingScreen() {
@@ -38,19 +38,19 @@ function LoadingScreen() {
 function PrivateRoute({ children }) {
   const { isAuthenticated, isLoading } = useStore()
   const location = useLocation()
-  // Ждём восстановления сессии, иначе уже вошедшего пользователя может
-  // на мгновение перекинуть на /auth раньше, чем restoreSession() успеет
-  // отработать (например, при обновлении страницы).
+  // Wait for the session to be restored, otherwise an already signed-in user
+  // can be bounced to /auth for a moment before restoreSession() finishes (on a
+  // page refresh, for example).
   if (isLoading) return <LoadingScreen />
   if (isAuthenticated) return children
-  // Запоминаем, куда человек шёл: после входа вернём туда же, а не
-  // высадим в каталог, где он уже не помнит, какого барана выбирал
+  // Remember where the person was heading: after sign-in they go back there
+  // rather than landing in the catalogue having forgotten which ram they picked
   return <Navigate to="/auth" replace state={{ from: location.pathname + location.search }} />
 }
 
 /**
- * В Telegram лендинг не нужен: мини-приложение открывают из бота, человек
- * уже пришёл за покупкой, и рекламная страница здесь только мешает.
+ * The landing is not needed inside Telegram: the mini app is opened from the
+ * bot, the person already came to buy, and a marketing page only gets in the way.
  */
 const inTelegram = () => {
   try {
@@ -67,12 +67,12 @@ function Layout() {
   const fetchModels = useStore(s => s.fetchModels)
   const fetchContracts = useStore(s => s.fetchContracts)
 
-  // Единственное место, где восстанавливается сессия и загружается каталог —
-  // раньше это же самое вызывалось повторно в main.jsx при старте приложения,
-  // из-за чего /auth/me и /sheep запрашивались дважды при каждом запуске.
+  // The single place where the session is restored and the catalogue is loaded —
+  // the same calls used to be repeated in main.jsx at start-up, so /auth/me and
+  // /sheep were requested twice on every launch.
   //
-  // Договоры тянем здесь же: по ним нижнее меню решает, показывать ли точку
-  // о неоплаченном уходе, а меню живёт на всех экранах сразу.
+  // Contracts are fetched here too: the bottom menu decides from them whether to
+  // show the unpaid-care dot, and the menu lives on every screen.
   useEffect(() => {
     restoreSession().finally(() => {
       fetchModels()
@@ -83,25 +83,25 @@ function Layout() {
   return (
     <>
       <Routes>
-        {/* Корень molfi.uz — публичная страница, и вошедшему она тоже
-            показывается: иначе владелец сайта не может её открыть, не
-            выйдя из аккаунта. Кнопка «Открыть приложение» ведёт в каталог
-            или на вход — смотря авторизован человек или нет.
-            В Telegram лендинг пропускаем: туда приходят из бота за покупкой. */}
+        {/* The molfi.uz root is a public page, and it is shown to signed-in
+            users as well: otherwise the site owner cannot open it without
+            logging out. The "Open the app" button leads to the catalogue or to
+            sign-in, depending on whether the person is authenticated.
+            Inside Telegram the landing is skipped: people arrive from the bot to buy. */}
         <Route path="/" element={
           isLoading ? <LoadingScreen />
             : inTelegram() ? <Onboarding />
             : <Landing />
         } />
         <Route path="/auth" element={<Auth />} />
-        {/* Оферта и приватность — публичные: на них ссылается подвал
-            лендинга, который читают до регистрации */}
+        {/* Offer and privacy are public: the landing footer links to them, and
+            they are read before sign-up */}
         <Route path="/offer" element={<Legal doc="offer" />} />
         <Route path="/privacy" element={<Legal doc="privacy" />} />
-        {/* Каталог закрыт: смотреть предложения можно только после входа.
-            PrivateRoute запоминает, куда человек шёл, и вернёт его туда
-            же после логина — иначе он попадает в каталог, забыв, какую
-            карточку открывал. */}
+        {/* The catalogue is closed: offers can only be viewed after sign-in.
+            PrivateRoute remembers where the person was heading and returns them
+            there after login — otherwise they land in the catalogue having
+            forgotten which card they had open. */}
         <Route path="/catalog" element={<PrivateRoute><Catalog /></PrivateRoute>} />
         <Route path="/product/:id" element={<PrivateRoute><ProductDetail /></PrivateRoute>} />
         <Route path="/product/:id/checkout" element={<PrivateRoute><Checkout /></PrivateRoute>} />

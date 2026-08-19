@@ -1,11 +1,11 @@
-// Пометка просрочек по рассрочке.
+// Marking overdue instalments.
 //
-// Раз в сутки: платежи со статусом pending, у которых срок прошёл больше чем
-// overdue_grace_days назад, становятся overdue. Договор, где накопилось
-// default_after_missed просрочек, уходит в defaulted.
+// Once a day: pending payments whose due date passed more than
+// overdue_grace_days ago become overdue. A contract that has accumulated
+// default_after_missed overdue payments moves to defaulted.
 //
-// Обе настройки читаются из settings, а не из констант: льготный период —
-// то, что бизнес меняет чаще всего.
+// Both values are read from settings rather than from constants: the grace
+// period is what the business changes most often.
 
 import 'dotenv/config'
 import { pool } from '../db/pool.js'
@@ -19,7 +19,7 @@ export const markOverdue = async ({ log = console.log } = {}) => {
   try {
     await client.query('BEGIN')
 
-    // Просроченные платежи. waived и paid не трогаем.
+    // Overdue payments. waived and paid are left alone.
     const overdue = (await client.query(
       `UPDATE payment_schedule
        SET status = 'overdue'
@@ -29,9 +29,9 @@ export const markOverdue = async ({ log = console.log } = {}) => {
       [String(graceDays)]
     )).rows
 
-    // Договоры, где просрочек накопилось сверх допустимого.
-    // Считаем по всем overdue, а не только по свежим: договор мог набрать
-    // лимит за несколько прогонов.
+    // Contracts that have piled up more overdue payments than allowed.
+    // Counted across all overdue rows, not just fresh ones: a contract may
+    // have reached the limit over several runs.
     const defaulted = (await client.query(
       `UPDATE contracts SET status = 'defaulted'
        WHERE model_type = 'installment'
@@ -48,7 +48,7 @@ export const markOverdue = async ({ log = console.log } = {}) => {
 
     await client.query('COMMIT')
 
-    log(`[markOverdue] grace ${graceDays} дн., порог ${maxMissed}: просрочено ${overdue.length}, договоров в defaulted ${defaulted.length}`)
+    log(`[markOverdue] grace ${graceDays} d., threshold ${maxMissed}: overdue ${overdue.length}, contracts defaulted ${defaulted.length}`)
     return { graceDays, maxMissed, overdue: overdue.length, defaulted: defaulted.length, overdueRows: overdue, defaultedRows: defaulted }
   } catch (e) {
     await client.query('ROLLBACK')
@@ -58,7 +58,7 @@ export const markOverdue = async ({ log = console.log } = {}) => {
   }
 }
 
-// Ручной запуск: npm run job:overdue
+// Manual run: npm run job:overdue
 if (import.meta.url === `file://${process.argv[1]}`) {
   await markOverdue()
   process.exit(0)

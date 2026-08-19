@@ -6,7 +6,7 @@ import { useT } from '../i18n'
 import SearchSelect from '../components/SearchSelect'
 
 const MODELS = ['investment', 'ownership', 'installment']
-// Модели, продающие конкретное животное: им нужны животное, цена и абонплата
+// Models that sell a specific animal: they need an animal, a price and a boarding fee
 const ANIMAL_MODELS = ['investment', 'ownership']
 
 const STATUS_BADGE = {
@@ -67,9 +67,9 @@ export default function Products() {
 
   useEffect(() => { load() }, [])
 
-  // Свободные животные: те, что не заняты активным оффером ownership.
-  // Редактируемый оффер своё животное сохраняет, иначе его нельзя было бы
-  // сохранить, не меняя животное.
+  // Free animals: those not taken by an active ownership offer.
+  // An offer being edited keeps its own animal, otherwise it could not be saved
+  // without changing the animal.
   const freeAnimals = useMemo(() => {
     const taken = new Set(
       products
@@ -101,7 +101,7 @@ export default function Products() {
         animal_id: Number(f.animal_id) || null,
         farm_id: animal?.farm_id || null,
         price_tiyin: Math.round(Number(f.price_sum) * 100) || 0,
-        // Пусто — бэкенд подставит значение по умолчанию из настроек
+        // Empty — the backend fills in the default from settings
         boarding_fee_monthly_tiyin: f.boarding_fee_sum
           ? Math.round(Number(f.boarding_fee_sum) * 100)
           : null,
@@ -163,7 +163,7 @@ export default function Products() {
     ? !!form.animal_id && !!form.price_sum
     : !!form.price_sum && !!form.term_months && !!form.meat_weight_kg
 
-  // Что показать в колонке «условия» — у каждой модели своё
+  // What to show in the "terms" column — each model has its own
   const terms = (p) => {
     if (p.model_type === 'installment') {
       return `${p.term_months} ${t('contracts.months')} · ${(p.meat_weight_g || 0) / 1000} kg`
@@ -284,7 +284,7 @@ export default function Products() {
               <input className="form-input" value={form.title_uz} onChange={set('title_uz')} />
             </div>
 
-            {/* Дальше поля зависят от модели */}
+            {/* The remaining fields depend on the model */}
             {ANIMAL_MODELS.includes(form.model_type) && (
               <>
                 <div className="form-group">

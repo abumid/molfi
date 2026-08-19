@@ -9,10 +9,10 @@ export const useStore = create((set) => ({
   token: ls.get(TOKEN_KEY) || null,
   user: null,
   isAuthenticated: false,
-  // Начинаем с true: пока restoreSession() не отработает (успешно или нет),
-  // маршруты не должны решать, авторизован пользователь или нет — иначе
-  // PrivateRoute успевает перекинуть уже вошедшего пользователя на /auth
-  // до того, как сессия восстановится (гонка при загрузке/обновлении страницы).
+  // Starts as true: until restoreSession() finishes (successfully or not) the
+  // routes must not decide whether the user is authenticated — otherwise
+  // PrivateRoute manages to bounce an already signed-in user to /auth before
+  // the session is restored (a race on page load/refresh).
   isLoading: true,
   language: ls.get(LANG_KEY) || 'en',
   products: [],
@@ -45,8 +45,8 @@ export const useStore = create((set) => ({
     }
   },
 
-  // Какие модели открыты — решает бэкенд через settings.models_enabled.
-  // Клиент не должен знать про существование выключенных.
+  // Which models are open is decided by the backend via settings.models_enabled.
+  // The client must not know that the disabled ones exist.
   fetchModels: async () => {
     try {
       const data = await api.get('/models')
@@ -75,8 +75,8 @@ export const useStore = create((set) => ({
     } catch (e) { console.error(e) }
   },
 
-  // Заявки на пополнение и вывод. Пока Click и Payme не подключены,
-  // деньги двигает админ, а клиент видит, на какой стадии его просьба.
+  // Top-up and withdrawal requests. Until Click and Payme are connected an admin
+  // moves the money, and the client sees what stage their request is at.
   fetchPaymentRequests: async () => {
     try {
       const data = await api.get('/payment-requests')

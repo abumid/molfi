@@ -1,13 +1,13 @@
-// Вклеивает готовую разметку лендинга в dist/index.html.
+// Injects the pre-rendered landing markup into dist/index.html.
 //
-// Запускается после `vite build` и `vite build --ssr`. Без этого краулер
-// поисковика и превью в мессенджерах видят пустой <div id="root"> —
-// приложение рисуется на клиенте.
+// Runs after `vite build` and `vite build --ssr`. Without it a search crawler
+// and messenger previews see an empty <div id="root"> — the app is drawn on
+// the client.
 //
-// Разметка вклеивается внутрь корневого узла. React при монтировании
-// её заменит: createRoot не гидратирует, а перерисовывает, и это здесь
-// намеренно — гидратация потребовала бы совпадения языка и темы,
-// а они берутся из localStorage, которого при сборке нет.
+// The markup is injected inside the root node. React replaces it on mount:
+// createRoot re-renders rather than hydrates, and that is deliberate here —
+// hydration would require the language and theme to match, and both come from
+// localStorage, which does not exist at build time.
 
 import { readFile, writeFile, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -19,7 +19,7 @@ const indexPath = resolve(root, 'dist/index.html')
 const ssrPath = resolve(root, '.ssr/prerender.js')
 
 if (!existsSync(ssrPath)) {
-  console.error('[prerender] нет .ssr/prerender.js — сначала vite build --ssr')
+  console.error('[prerender] no .ssr/prerender.js — run vite build --ssr first')
   process.exit(1)
 }
 
@@ -30,11 +30,11 @@ const source = await readFile(indexPath, 'utf8')
 const marker = '<div id="root"></div>'
 
 if (!source.includes(marker)) {
-  console.error('[prerender] в dist/index.html нет пустого <div id="root"></div>')
+  console.error('[prerender] dist/index.html has no empty <div id="root"></div>')
   process.exit(1)
 }
 
 await writeFile(indexPath, source.replace(marker, `<div id="root">${html}</div>`))
 await rm(resolve(root, '.ssr'), { recursive: true, force: true })
 
-console.log(`[prerender] лендинг вклеен в index.html: ${html.length} символов разметки`)
+console.log(`[prerender] landing injected into index.html: ${html.length} characters of markup`)

@@ -1,13 +1,13 @@
 import { pool } from './pool.js'
 
-// Molfi v2 — миграция под модели investment / ownership / installment.
-// Идемпотентна: можно гонять поверх существующей базы v1.
-// Порядок: справочники → переименование sheep→animals → продажи → индексы → дефолтные настройки.
+// Molfi v2 — migration for the investment / ownership / installment models.
+// Idempotent: safe to run on top of an existing v1 database.
+// Order: reference tables → rename sheep→animals → sales → indexes → default settings.
 
 const migrate = async () => {
   await pool.query(`
     -- ============================================================
-    -- 0. НАСТРОЙКИ ПЛАТФОРМЫ (вместо хардкода 10% в коде)
+    -- 0. PLATFORM SETTINGS (instead of a hardcoded 10% in the code)
     -- ============================================================
     CREATE TABLE IF NOT EXISTS settings (
       key        VARCHAR(60) PRIMARY KEY,
@@ -17,7 +17,7 @@ const migrate = async () => {
     );
 
     -- ============================================================
-    -- 1. USERS (без изменений от v1)
+    -- 1. USERS (unchanged from v1)
     -- ============================================================
     CREATE TABLE IF NOT EXISTS users (
       id            SERIAL PRIMARY KEY,
@@ -33,7 +33,7 @@ const migrate = async () => {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name        VARCHAR(100);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name         VARCHAR(100);
-    -- Язык интерфейса. Дефолт — английский, ru/uz переключаются вручную.
+    -- Interface language. Defaults to English; ru/uz are switched manually.
     ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(2) DEFAULT 'en';
     ALTER TABLE users ALTER COLUMN language SET DEFAULT 'en';
 
@@ -64,8 +64,8 @@ const migrate = async () => {
 
     -- ============================================================
     -- 2. SHEEP -> ANIMALS
-    --    Переименовываем, чтобы позже добавить коров и коз.
-    --    FK и индексы Postgres переносит автоматически.
+    --    Renamed so cows and goats can be added later.
+    --    Postgres carries the foreign keys and indexes over automatically.
     -- ============================================================
     DO $$
     BEGIN
@@ -100,19 +100,19 @@ const migrate = async () => {
     ALTER TABLE animals ADD COLUMN IF NOT EXISTS last_video_at      TIMESTAMP;
     ALTER TABLE animals ADD COLUMN IF NOT EXISTS last_scan_at       TIMESTAMP;
 
-    -- VARCHAR(500) мало: подписанные ссылки на S3 и Cloudinary регулярно
-    -- длиннее, и картинка молча обрезалась бы при вставке. varchar -> text
-    -- в Postgres бинарно совместим, таблица не перезаписывается.
+    -- VARCHAR(500) is too short: signed S3 and Cloudinary links are regularly
+    -- longer, and the image would be silently truncated on insert. varchar -> text
+    -- is binary compatible in Postgres, so the table is not rewritten.
     ALTER TABLE animals ALTER COLUMN photo_url TYPE TEXT;
 
-    -- Трансляция с камеры. Пусто — значит камеры нет, и клиент покажет
-    -- это честно, а не мёртвую кнопку «смотреть».
+    -- Camera stream. Empty means there is no camera, and the client says so
+    -- honestly instead of showing a dead "watch" button.
     ALTER TABLE animals ADD COLUMN IF NOT EXISTS stream_url TEXT;
-    -- Камера чаще стоит на загон, а не на отдельное животное, поэтому
-    -- ссылка есть и у фермы. У животного — приоритет.
+    -- The camera usually covers a pen rather than a single animal, so the farm
+    -- has a link too. The one on the animal takes priority.
     ALTER TABLE farms   ADD COLUMN IF NOT EXISTS stream_url TEXT;
 
-    -- v1-поля долевого владения больше не нужны
+    -- v1 fractional-ownership columns are no longer needed
     ALTER TABLE animals DROP COLUMN IF EXISTS total_shares;
     ALTER TABLE animals DROP COLUMN IF EXISTS sold_shares;
 
@@ -129,7 +129,7 @@ const migrate = async () => {
     END $$;
 
     -- ============================================================
-    -- 3. Переименование sheep_id -> animal_id в связанных таблицах
+    -- 3. Rename sheep_id -> animal_id in the related tables
     -- ============================================================
     DO $$
     DECLARE t TEXT;
@@ -160,7 +160,7 @@ const migrate = async () => {
       recorded_at   TIMESTAMP DEFAULT NOW()
     );
 
-    -- Ссылки на видео тоже бывают длиннее 500 символов
+    -- Video links can also run past 500 characters
     ALTER TABLE videos ALTER COLUMN url           TYPE TEXT;
     ALTER TABLE videos ALTER COLUMN thumbnail_url TYPE TEXT;
 
@@ -178,7 +178,7 @@ const migrate = async () => {
       created_at     TIMESTAMP DEFAULT NOW()
     );
 
-    -- Английский добавлен в v2 как основной язык
+    -- English was added in v2 as the primary language
     ALTER TABLE activity ADD COLUMN IF NOT EXISTS title_en       VARCHAR(100);
     ALTER TABLE activity ADD COLUMN IF NOT EXISTS description_en TEXT;
 
@@ -191,7 +191,7 @@ const migrate = async () => {
     END $$;
 
     -- ============================================================
-    -- 4. PRODUCTS — витрина. Что именно продаём и по какой модели.
+    -- 4. PRODUCTS — the catalogue. What exactly is sold, and under which model.
     -- ============================================================
     CREATE TABLE IF NOT EXISTS products (
       id               SERIAL PRIMARY KEY,
@@ -206,17 +206,17 @@ const migrate = async () => {
       description_uz   TEXT,
       photo_url        VARCHAR(500),
 
-      price_tiyin      BIGINT NOT NULL DEFAULT 0,  -- ownership: цена животного; installment: полная цена
-      min_amount_tiyin BIGINT,                     -- fixed_income: минимальный вход
-      term_months      INTEGER,                    -- installment: срок рассрочки; fixed_income: срок вклада
-      annual_rate_bp   INTEGER,                    -- ЛЕГАСИ: остаток модели fixed_income, не используется
-      meat_weight_g    INTEGER,                    -- installment: обещанный выход мяса
+      price_tiyin      BIGINT NOT NULL DEFAULT 0,  -- ownership: animal price; installment: full price
+      min_amount_tiyin BIGINT,                     -- fixed_income: minimum entry
+      term_months      INTEGER,                    -- installment: term; fixed_income: deposit term
+      annual_rate_bp   INTEGER,                    -- LEGACY: leftover of the fixed_income model, unused
+      meat_weight_g    INTEGER,                    -- installment: promised meat yield
 
       slots_total      INTEGER DEFAULT 1,
       slots_taken      INTEGER DEFAULT 0,
       status           VARCHAR(20) DEFAULT 'draft',
-      -- Абонплата за содержание. Может отличаться от значения по умолчанию
-      -- в settings: крупному животному нужно больше корма.
+      -- Monthly boarding fee. May differ from the default in settings:
+      -- a larger animal needs more feed.
       boarding_fee_monthly_tiyin BIGINT,
       starts_at        DATE,
       ends_at          DATE,
@@ -226,38 +226,38 @@ const migrate = async () => {
     ALTER TABLE products ALTER COLUMN photo_url TYPE TEXT;
 
     -- ============================================================
-    -- 4.1 ПЕРЕИМЕНОВАНИЕ МОДЕЛЕЙ ПОД РЕАЛЬНЫЙ БИЗНЕС
+    -- 4.1 RENAMING THE MODELS TO MATCH THE REAL BUSINESS
     --
-    -- Было (из кита): ownership / installment / fixed_income.
-    -- Стало:          investment / ownership / installment.
+    -- Was (from the kit): ownership / installment / fixed_income.
+    -- Now:                investment / ownership / installment.
     --
-    -- Старый ownership по смыслу был инвестицией: клиент покупал животное,
-    -- ферма растила, животное продавалось, клиент получал выручку.
-    -- Поэтому существующие строки переезжают в investment.
-    -- Освободившееся имя ownership занимает новая модель: клиент покупает
-    -- животное, платит абонплату помесячно и забирает его живым или мясом.
+    -- The old ownership was an investment in meaning: the client bought an
+    -- animal, the farm raised it, the animal was sold and the client took the
+    -- proceeds. So the existing rows move to investment.
+    -- The freed-up name ownership goes to a new model: the client buys an
+    -- animal, pays boarding monthly and takes it live or as meat.
     --
-    -- fixed_income удаляется целиком: животноводство не может обещать
-    -- фиксированную ставку, а обещание доходности — обязательство,
-    -- за которое отвечают деньгами.
+    -- fixed_income is removed entirely: livestock cannot promise a fixed rate,
+    -- and a promised return is an obligation you answer for with money.
+    --
     -- ============================================================
     DO $$
     BEGIN
-      -- Констрейнты снимаем до переименования, иначе UPDATE в них упрётся
+      -- Constraints are dropped before the rename, or the UPDATE runs into them
       ALTER TABLE products  DROP CONSTRAINT IF EXISTS products_model_check;
       ALTER TABLE products  DROP CONSTRAINT IF EXISTS products_model_fields_check;
       UPDATE products SET model_type = 'investment' WHERE model_type = 'ownership';
       DELETE FROM products WHERE model_type = 'fixed_income';
 
-      -- contracts создаётся ниже по файлу, и на чистой базе его здесь
-      -- ещё нет. Без этой проверки первый же npm run migrate падает
-      -- на «relation contracts does not exist».
+      -- contracts is created further down this file, so on a clean database it
+      -- does not exist yet. Without this guard the very first npm run migrate
+      -- fails with "relation contracts does not exist".
       IF to_regclass('public.contracts') IS NOT NULL THEN
         ALTER TABLE contracts DROP CONSTRAINT IF EXISTS contracts_model_check;
         UPDATE contracts SET model_type = 'investment' WHERE model_type = 'ownership';
 
-        -- Договоры по удаляемой модели закрываем, а не бросаем: у них
-        -- есть начисления в payouts, которые иначе повиснут сиротами
+        -- Contracts on the removed model are closed rather than dropped: they
+        -- have payouts entries that would otherwise be left orphaned
         UPDATE contracts SET status = 'cancelled', closed_at = NOW()
           WHERE model_type = 'fixed_income' AND status IN ('pending','active');
         IF to_regclass('public.payouts') IS NOT NULL THEN
@@ -282,32 +282,32 @@ const migrate = async () => {
         ALTER TABLE products ADD CONSTRAINT products_status_check
           CHECK (status IN ('draft','active','sold_out','closed'));
       END IF;
-      -- обязательные поля зависят от модели
+      -- required fields depend on the model
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_model_fields_check') THEN
         ALTER TABLE products ADD CONSTRAINT products_model_fields_check CHECK (
-          -- investment и ownership продают конкретное животное по цене
+          -- investment and ownership sell a specific animal at a price
           (model_type NOT IN ('investment','ownership') OR (animal_id IS NOT NULL AND price_tiyin > 0))
-          -- installment продаёт обещание мяса в срок
+          -- installment sells a promise of meat by a deadline
           AND (model_type <> 'installment' OR (term_months IS NOT NULL AND meat_weight_g IS NOT NULL))
         );
       END IF;
     END $$;
 
     -- ============================================================
-    -- 5. CONTRACTS — договор конкретного пользователя.
-    --    Заменяет таблицу shares из v1.
+    -- 5. CONTRACTS — one user's contract.
+    --    Replaces the shares table from v1.
     -- ============================================================
     CREATE TABLE IF NOT EXISTS contracts (
       id              SERIAL PRIMARY KEY,
       user_id         INTEGER NOT NULL REFERENCES users(id),
       product_id      INTEGER NOT NULL REFERENCES products(id),
-      animal_id       INTEGER REFERENCES animals(id),  -- installment: NULL до отгрузки
+      animal_id       INTEGER REFERENCES animals(id),  -- installment: NULL until shipment
       model_type      VARCHAR(20) NOT NULL,
       status          VARCHAR(20) NOT NULL DEFAULT 'pending',
 
-      principal_tiyin BIGINT NOT NULL DEFAULT 0,  -- на какую сумму договорились
-      paid_tiyin      BIGINT NOT NULL DEFAULT 0,  -- сколько реально внесено
-      payout_tiyin    BIGINT NOT NULL DEFAULT 0,  -- сколько выплачено обратно
+      principal_tiyin BIGINT NOT NULL DEFAULT 0,  -- the amount agreed on
+      paid_tiyin      BIGINT NOT NULL DEFAULT 0,  -- how much was actually paid in
+      payout_tiyin    BIGINT NOT NULL DEFAULT 0,  -- how much was paid back out
 
       term_months     INTEGER,
       annual_rate_bp  INTEGER,
@@ -319,15 +319,15 @@ const migrate = async () => {
       created_at      TIMESTAMP DEFAULT NOW()
     );
 
-    -- Абонплата фиксируется в момент подписания и дальше не меняется,
-    -- даже если тариф в settings подняли: клиент согласился на эту цену.
+    -- The boarding fee is fixed at signing and does not change afterwards,
+    -- even if the tariff in settings goes up: the client agreed to this price.
     ALTER TABLE contracts ADD COLUMN IF NOT EXISTS boarding_fee_monthly_tiyin BIGINT;
-    -- Сколько начислено за содержание и сколько из этого закрыто.
-    -- investment гасит долг из выручки при продаже, ownership — помесячно.
+    -- How much boarding has been accrued and how much of it is settled.
+    -- investment settles the debt from the sale, ownership pays monthly.
     ALTER TABLE contracts ADD COLUMN IF NOT EXISTS boarding_accrued_tiyin BIGINT NOT NULL DEFAULT 0;
     ALTER TABLE contracts ADD COLUMN IF NOT EXISTS boarding_paid_tiyin    BIGINT NOT NULL DEFAULT 0;
-    -- До какого месяца абонплата уже начислена. Крон идёт от этой даты,
-    -- поэтому повторный запуск в тот же день ничего не задваивает.
+    -- Up to which month boarding is already accrued. The cron starts from this
+    -- date, so running it twice in one day double-counts nothing.
     ALTER TABLE contracts ADD COLUMN IF NOT EXISTS boarding_accrued_until DATE;
 
     DO $$
@@ -344,8 +344,8 @@ const migrate = async () => {
         ALTER TABLE contracts ADD CONSTRAINT contracts_exit_check
           CHECK (exit_type IS NULL OR exit_type IN ('sale','slaughter'));
       END IF;
-      -- одно животное не может быть продано двум владельцам одновременно
-      -- Условие индекса изменилось (добавился investment), поэтому старый сносим
+      -- one animal cannot be sold to two owners at the same time
+      -- The index condition changed (investment was added), so the old one goes
       IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'contracts_one_owner_per_animal'
                  AND indexdef NOT LIKE '%investment%') THEN
         DROP INDEX contracts_one_owner_per_animal;
@@ -358,7 +358,7 @@ const migrate = async () => {
     END $$;
 
     -- ============================================================
-    -- 6. PAYMENT_SCHEDULE — график платежей (модель installment)
+    -- 6. PAYMENT_SCHEDULE — payment plan (installment model)
     -- ============================================================
     CREATE TABLE IF NOT EXISTS payment_schedule (
       id           SERIAL PRIMARY KEY,
@@ -381,7 +381,7 @@ const migrate = async () => {
     END $$;
 
     -- ============================================================
-    -- 7. PAYOUTS — выплаты пользователю
+    -- 7. PAYOUTS — payouts to the user
     --    fixed_income: interest + principal; ownership: sale_proceeds
     -- ============================================================
     CREATE TABLE IF NOT EXISTS payouts (
@@ -407,10 +407,10 @@ const migrate = async () => {
         ALTER TABLE payouts ADD CONSTRAINT payouts_status_check
           CHECK (status IN ('pending','paid','cancelled'));
       END IF;
-      -- Идемпотентность начисления процентов: крон может упасть и
-      -- перезапуститься в тот же день, и без этого индекса проценты
-      -- за период начислятся дважды. Индекс частичный — у выплат тела
-      -- и выручки period_start пустой, они под ограничение не попадают.
+      -- Idempotent interest accrual: the cron may crash and restart on the same
+      -- day, and without this index the interest for the period would be
+      -- accrued twice. The index is partial — principal and revenue payouts have
+      -- an empty period_start and fall outside the constraint.
       IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'payouts_one_interest_per_period') THEN
         CREATE UNIQUE INDEX payouts_one_interest_per_period
           ON payouts (contract_id, period_start)
@@ -419,8 +419,8 @@ const migrate = async () => {
     END $$;
 
     -- ============================================================
-    -- 8. DELIVERIES — забой и выдача мяса
-    --    ownership с exit_type='slaughter' + все installment
+    -- 8. DELIVERIES — slaughter and meat handover
+    --    ownership with exit_type='slaughter' plus every installment
     -- ============================================================
     CREATE TABLE IF NOT EXISTS deliveries (
       id                SERIAL PRIMARY KEY,
@@ -446,7 +446,7 @@ const migrate = async () => {
     END $$;
 
     -- ============================================================
-    -- 9. ДЕНЬГИ
+    -- 9. MONEY
     -- ============================================================
     CREATE TABLE IF NOT EXISTS wallet_balances (
       user_id       INTEGER PRIMARY KEY REFERENCES users(id),
@@ -465,11 +465,11 @@ const migrate = async () => {
     );
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS contract_id INTEGER REFERENCES contracts(id);
 
-    -- Заявки на пополнение и вывод. Пока Click и Payme не подключены,
-    -- клиент оставляет заявку с суммой, админ её одобряет, и только тогда
-    -- деньги двигаются. Отдельная таблица, а не статус у транзакции:
-    -- транзакция — это свершившийся факт движения денег, и заявка,
-    -- лежащая в ней со статусом «ждёт», ломала бы любой подсчёт баланса.
+    -- Top-up and withdrawal requests. Until Click and Payme are connected, the
+    -- client leaves a request with an amount, an admin approves it, and only
+    -- then does money move. A separate table rather than a transaction status:
+    -- a transaction is a completed movement of money, and a request sitting in
+    -- that table as "waiting" would break every balance calculation.
     CREATE TABLE IF NOT EXISTS payment_requests (
       id             SERIAL PRIMARY KEY,
       user_id        INTEGER NOT NULL REFERENCES users(id),
@@ -502,7 +502,7 @@ const migrate = async () => {
       ON payment_requests (user_id, created_at DESC);
 
     -- ============================================================
-    -- 10. ИНДЕКСЫ
+    -- 10. INDEXES
     -- ============================================================
     CREATE INDEX IF NOT EXISTS users_telegram_id_idx        ON users (telegram_id);
     CREATE INDEX IF NOT EXISTS sms_codes_phone_idx          ON sms_codes (phone);
@@ -519,40 +519,40 @@ const migrate = async () => {
     CREATE INDEX IF NOT EXISTS transactions_user_idx        ON transactions (user_id, created_at DESC);
 
     -- ============================================================
-    -- 11. ЛЕГАСИ: shares из v1 не удаляем, но помечаем
+    -- 11. LEGACY: shares from v1 is kept but marked
     -- ============================================================
     DO $$
     BEGIN
       IF to_regclass('public.shares') IS NOT NULL THEN
-        COMMENT ON TABLE shares IS 'DEPRECATED v1: долевое владение. Не использовать, оставлена для истории.';
+        COMMENT ON TABLE shares IS 'DEPRECATED v1: fractional ownership. Do not use, kept for history.';
       END IF;
     END $$;
   `)
 
-  // Дефолтные настройки платформы — вставляем отдельно, чтобы не ломать миграцию
+  // Default platform settings — inserted separately so the migration cannot break
   await pool.query(`
     INSERT INTO settings (key, value, comment) VALUES
-      ('boarding_fee_monthly_tiyin', '4000000', 'Абонплата за содержание в месяц, тийин (4 000 000 = 40 000 сум)'),
-      ('purchase_fee_bp',            '0',       'Комиссия при покупке, б.п. Пока 0: барьер входа отпугивает клиентов'),
-      ('profit_fee_client_bp',       '0',       'Комиссия с прибыли клиента, б.п. Пока 0'),
-      ('profit_fee_farm_bp',         '0',       'Комиссия с прибыли фермы, б.п. Пока 0'),
-      ('late_fee_bp',                '0',       'Пеня за просрочку платежа, б.п. в день'),
-      ('overdue_grace_days',         '5',       'Сколько дней после due_date до статуса overdue'),
-      ('default_after_missed',       '3',       'Сколько пропущенных платежей до статуса defaulted'),
-      ('models_enabled', 'investment,ownership', 'Какие модели открыты. Из investment,ownership,installment')
+      ('boarding_fee_monthly_tiyin', '4000000', 'Monthly boarding fee, tiyin (4,000,000 = 40,000 sum)'),
+      ('purchase_fee_bp',            '0',       'Purchase fee, bp. 0 for now: an entry barrier scares clients off'),
+      ('profit_fee_client_bp',       '0',       'Fee on the client profit, bp. 0 for now'),
+      ('profit_fee_farm_bp',         '0',       'Fee on the farm profit, bp. 0 for now'),
+      ('late_fee_bp',                '0',       'Late payment penalty, bp per day'),
+      ('overdue_grace_days',         '5',       'Days after due_date before the overdue status'),
+      ('default_after_missed',       '3',       'Missed payments before the defaulted status'),
+      ('models_enabled', 'investment,ownership', 'Which models are open. From investment,ownership,installment')
     ON CONFLICT (key) DO NOTHING;
   `)
 
-  // Настройки, оставшиеся от прежней модели, чтобы админка не показывала мусор
+  // Settings left over from the previous model, so the admin panel shows no junk
   await pool.query(`
     DELETE FROM settings WHERE key IN ('platform_fee_bp','min_investment_tiyin');
     UPDATE settings SET value = 'investment,ownership'
       WHERE key = 'models_enabled' AND value LIKE '%fixed_income%';
 
-    -- Прежняя миграция сеяла абонплату нулём, и ON CONFLICT DO NOTHING
-    -- её не перезаписывает. Ноль теперь не рабочее значение: без абонплаты
-    -- у платформы нет выручки вообще. Меняем только нули — осознанно
-    -- выставленный тариф не трогаем.
+    -- The earlier migration seeded the boarding fee as zero, and ON CONFLICT DO
+    -- NOTHING does not overwrite it. Zero is no longer a working value: with no
+    -- boarding fee the platform has no revenue at all. Only zeros are changed —
+    -- a deliberately set tariff is left alone.
     UPDATE settings SET value = '4000000', updated_at = NOW()
       WHERE key = 'boarding_fee_monthly_tiyin' AND value IN ('0','');
   `)

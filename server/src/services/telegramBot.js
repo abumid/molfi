@@ -6,7 +6,7 @@ dotenv.config()
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true })
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://molfi.uz'
 
-// Кэш языка в памяти + фолбэк в БД (переживает рестарт PM2)
+// In-memory language cache with a database fallback (survives a PM2 restart)
 const userLang = {}
 
 const t = {
@@ -58,7 +58,7 @@ const getLang = async (telegramId) => {
   } catch (e) {
     console.error('[bot] getLang error:', e.message)
   }
-  // Английский — язык приложения по умолчанию, бот не должен расходиться с ним
+  // English is the app default; the bot must not diverge from it
   return 'en'
 }
 
@@ -101,8 +101,8 @@ bot.onText(/^\/help/, async (msg) => {
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id
   const data = query.data
-  // Языки берём из самого словаря: добавили перевод — кнопка заработала,
-  // без правки условия здесь
+  // Languages come from the dictionary itself: add a translation and the
+  // button works, with no need to edit the condition here
   if (data?.startsWith('lang_') && t[data.slice(5)]) {
     const lang = data.slice(5)
     await setLang(query.from.id, lang)
@@ -166,8 +166,8 @@ bot.on('polling_error', (e) => console.error('[bot] polling error:', e.message))
 const describeSendError = (e) => {
   const code = e?.response?.body?.error_code
   const desc = e?.response?.body?.description || e.message
-  if (code === 403) return `403 — пользователь не нажимал /start или заблокировал бота (${desc})`
-  if (code === 400) return `400 — неверный chat_id/telegram_id (${desc})`
+  if (code === 403) return `403 — user never pressed /start, or blocked the bot (${desc})`
+  if (code === 400) return `400 — invalid chat_id/telegram_id (${desc})`
   return desc
 }
 

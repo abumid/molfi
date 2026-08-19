@@ -5,8 +5,8 @@ node_modules/
 dist/
 dist-ssr/
 build/
-# Промежуточная SSR-сборка предрендера. Скрипт сносит её сам,
-# но при упавшей сборке она остаётся на диске.
+# Intermediate SSR build for the prerender. The script removes it itself, but
+# a failed build leaves it on disk.
 .ssr/
 
 # Environment

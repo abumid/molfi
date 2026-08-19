@@ -13,9 +13,9 @@ const router = Router()
 const MODELS = ['investment', 'ownership', 'installment']
 const STATUSES = ['pending', 'active', 'completed', 'cancelled', 'defaulted']
 
-// Данные животного тянем в сам договор, а не берём из оффера: после покупки
-// оффер уходит в sold_out и пропадает с витрины, а следить за животным
-// владельцу нужно именно тогда — весь срок откорма.
+// Animal data is pulled into the contract itself rather than read from the
+// offer: after the purchase the offer goes sold_out and leaves the catalogue,
+// and that is exactly when the owner needs to follow the animal — all season.
 const SELECT_CONTRACT = `
   SELECT c.*,
          p.title_en, p.title_ru, p.title_uz, p.photo_url,
@@ -45,9 +45,9 @@ const SELECT_CONTRACT = `
 `
 
 /**
- * Сколько списать с кошелька при оформлении.
- *   investment / ownership — цена животного плюс комиссия покупки
- *   installment            — ничего: смысл рассрочки в том, чтобы платить потом
+ * How much to charge the wallet at checkout.
+ *   investment / ownership — the animal price plus the purchase fee
+ *   installment            — nothing: the point of instalments is to pay later
  */
 const upfrontCost = (product, purchaseFeeBp) =>
   product.model_type === 'installment'
@@ -56,26 +56,26 @@ const upfrontCost = (product, purchaseFeeBp) =>
 
 const isoMonths = (date, months) => addMonths(date, Number(months || 0)).toISOString().slice(0, 10)
 
-// ── оформление ────────────────────────────────────────────
+// ── checkout ──────────────────────────────────────────────
 
 /**
- * Создание договора. Вынесено из роута, потому что оформлять могут двое:
- * клиент сам через приложение и админ за клиента, который пришёл на ферму.
- * Логика обязана быть одна — иначе списания и проверки разъедутся.
+ * Contract creation. Extracted from the route because two parties can do it:
+ * the client through the app, and an admin on behalf of a client who came to
+ * the farm. The logic has to be one — otherwise charges and checks drift apart.
  *
- * Транзакцией управляет вызывающий: ему может понадобиться откатить
- * и то, что он делал до нас.
+ * The caller manages the transaction: it may need to roll back what it did
+ * before calling us as well.
  */
 const createContract = async (client, userId, { product_id, exit_type }) => {
-  // Блокируем оффер: без этого два параллельных запроса разберут
-  // последний слот дважды и slots_taken уедет выше slots_total.
+  // The offer is locked: without it two parallel requests take the last slot
+  // twice and slots_taken climbs past slots_total.
   const product = (await client.query(
     `SELECT * FROM products WHERE id = $1 FOR UPDATE`, [product_id]
   )).rows[0]
   if (!product) return { error: 'product_not_found', status: 404 }
   if (product.status !== 'active') return { error: 'product_not_active' }
 
-  // Спрятанную модель нельзя оформить, даже зная product_id напрямую
+  // A hidden model cannot be bought, even knowing the product_id directly
   if (!(await enabledModels()).includes(product.model_type)) return { error: 'model_disabled' }
   if (product.slots_taken >= product.slots_total) return { error: 'no_slots_left' }
 
@@ -97,12 +97,12 @@ const createContract = async (client, userId, { product_id, exit_type }) => {
     )
   }
 
-  // Животное закрепляется сразу у обеих моделей с животным.
-  // У installment оно назначается позже, при отгрузке.
+  // The animal is attached immediately for both models that have one.
+  // For installment it is assigned later, at shipment.
   const animalId = product.model_type === 'installment' ? null : product.animal_id
 
-  // Абонплату фиксируем в договоре: подняли тариф — старые договоры
-  // должны остаться на своей цене
+  // The boarding fee is pinned into the contract: raise the tariff and old
+  // contracts must stay at their own price
   const boardingFee = product.model_type === 'installment'
     ? null
     : (Number(product.boarding_fee_monthly_tiyin) || await boardingFeeMonthly())
@@ -160,7 +160,7 @@ const createContract = async (client, userId, { product_id, exit_type }) => {
   return { contract, schedule }
 }
 
-/** Гонка за животное превращается в понятный ответ, а не в 500. */
+/** A race for an animal turns into a clear response instead of a 500. */
 const asRaceError = (e) =>
   e.code === '23505' && e.constraint === 'contracts_one_owner_per_animal'
 
@@ -189,8 +189,8 @@ router.post('/contracts', requireAuth, asyncHandler(async (req, res) => {
 }))
 
 /**
- * Оформление за клиента. Нужно, когда человек пришёл на ферму лично:
- * без этого договор можно создать только из приложения, а оно есть не у всех.
+ * Checkout on behalf of a client. Needed when the person came to the farm in
+ * person: otherwise a contract could only be created from the app, and not everyone has it.
  */
 router.post('/admin/contracts', requireAdmin, asyncHandler(async (req, res) => {
   const { user_id, product_id, exit_type } = req.body
@@ -221,9 +221,9 @@ router.post('/admin/contracts', requireAdmin, asyncHandler(async (req, res) => {
 }))
 
 /**
- * Сводка по договору. У каждой модели своя: investment показывает,
- * сколько выйдет при продаже сейчас, ownership — сколько накопилось
- * за содержание, installment — прогресс по графику.
+ * Contract summary. Each model has its own: investment shows what a sale would
+ * yield right now, ownership how much boarding has piled up, installment the
+ * progress through the schedule.
  */
 const summarize = (c, rates, schedule = []) => {
   if (c.model_type === 'installment') return installmentSummary(c, schedule)
@@ -234,7 +234,7 @@ const summarize = (c, rates, schedule = []) => {
   }, { ...rates, salePriceTiyin: c.final_sale_price_tiyin || null })
 }
 
-// ── мои договоры ──────────────────────────────────────────
+// ── my contracts ──────────────────────────────────────────
 
 router.get('/contracts', requireAuth, asyncHandler(async (req, res) => {
   const contracts = (await pool.query(
@@ -244,7 +244,7 @@ router.get('/contracts', requireAuth, asyncHandler(async (req, res) => {
 
   const rates = await feeRates()
 
-  // Графики забираем одним запросом на все договоры, а не по одному в цикле
+  // Schedules are fetched in one query for all contracts, not one per loop pass
   const installmentIds = contracts.filter(c => c.model_type === 'installment').map(c => c.id)
   const scheduleRows = installmentIds.length
     ? (await pool.query(
@@ -258,9 +258,9 @@ router.get('/contracts', requireAuth, asyncHandler(async (req, res) => {
     return acc
   }, {})
 
-  // Крайние замеры веса — чтобы в списке показать прибавку.
-  // Всю историю тянуть незачем: клиент считает прирост по первой
-  // и последней точке, промежуточные на это не влияют.
+  // Boundary weight records — to show the gain in the list.
+  // Pulling the whole history is pointless: the client computes the gain from
+  // the first and last point, the ones in between do not affect it.
   const animalIds = [...new Set(contracts.map(c => c.animal_id).filter(Boolean))]
   const edges = animalIds.length
     ? (await pool.query(
@@ -282,8 +282,8 @@ router.get('/contracts', requireAuth, asyncHandler(async (req, res) => {
     const e = byAnimal[c.animal_id]
     return {
       ...c,
-      // Отдаём в том же виде, что и полная история: клиент считает
-      // прибавку одной и той же функцией, без второй реализации
+      // Returned in the same shape as the full history: the client computes the
+      // gain with the same function, without a second implementation
       weights: e
         ? [{ weight_g: e.last_g, recorded_at: e.last_at },
            { weight_g: e.first_g, recorded_at: e.first_at }]
@@ -307,8 +307,8 @@ router.get('/contracts/:id', requireAuth, asyncHandler(async (req, res) => {
     pool.query(`SELECT * FROM deliveries WHERE contract_id=$1 ORDER BY created_at DESC`, [req.params.id]),
   ])
 
-  // Наблюдение за животным: вес, лента ухода, видео. Ходить за этим
-  // в /animals/:id клиенту нельзя — там нет проверки, что животное его.
+  // Watching the animal: weight, care feed, videos. The client cannot go to
+  // /animals/:id for this — there is no check there that the animal is theirs.
   const [weights, activity, videos] = contract.animal_id
     ? await Promise.all([
         pool.query(
@@ -338,7 +338,7 @@ router.get('/contracts/:id', requireAuth, asyncHandler(async (req, res) => {
   })
 }))
 
-// ── админ ─────────────────────────────────────────────────
+// ── admin ─────────────────────────────────────────────────
 
 router.get('/admin/contracts', requireAdmin, asyncHandler(async (req, res) => {
   const { model_type, status } = req.query

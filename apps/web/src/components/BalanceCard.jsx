@@ -5,11 +5,11 @@ import { formatNumber, currencyLabel } from '../utils/format'
 import { portfolioTotals } from '../utils/portfolio'
 
 /**
- * Карточка баланса. Стоит и на каталоге, и в кошельке — числа обязаны
- * совпадать до тийина, поэтому компонент один, а не два похожих.
+ * Balance card. It stands on both the catalogue and the wallet — the numbers
+ * must match down to the tiyin, so there is one component, not two similar ones.
  *
- * Общий баланс крупно, под ним свободные деньги и активы раздельно:
- * инвестиции живут по сегодняшней цене, владение — по цене покупки.
+ * Total balance in large type, free money and assets separately below it:
+ * investments carry today's price, ownership the purchase price.
  */
 export default function BalanceCard({ onTopUp, onWithdraw, showActions = true }) {
   const navigate = useNavigate()
@@ -66,8 +66,8 @@ export default function BalanceCard({ onTopUp, onWithdraw, showActions = true })
           <div style={{ ...tileValue, color: '#fff' }}>{n(p.free)}</div>
         </div>
 
-        {/* Плитку инвестиций не рисуем, если их нет: прочерк на пол-экрана
-            выглядит как ошибка загрузки */}
+        {/* The investment tile is not drawn when there are none: a dash across
+            half the screen looks like a loading error */}
         {p.hasInvestments && (
           <div style={tile}>
             <div style={tileLabel}>
@@ -81,8 +81,8 @@ export default function BalanceCard({ onTopUp, onWithdraw, showActions = true })
         )}
       </div>
 
-      {/* Владение отдельной строкой: у него нет сегодняшней цены,
-          и в одной плитке с инвестициями оно бы её подразумевало */}
+      {/* Ownership on its own line: it has no price today, and sharing a tile
+          with investments would imply that it does */}
       {p.hasOwnership && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',

@@ -5,8 +5,8 @@ import { useStore } from '../store'
 import { useT } from '../i18n'
 import SearchSelect from '../components/SearchSelect'
 
-// Типы, увеличивающие баланс. Список тот же, что в admin.js на бэкенде —
-// если он разъедется, форма покажет один знак, а сервер применит другой.
+// Types that increase the balance. The same list as in admin.js on the backend —
+// if they drift apart, the form shows one sign and the server applies another.
 const INCOME_TYPES = ['deposit', 'payout', 'topup']
 
 const ALL_TYPES = [

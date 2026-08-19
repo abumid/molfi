@@ -8,10 +8,10 @@ const DOT = {
 }
 
 /**
- * Лента ухода на вертикальной оси времени.
+ * Care feed on a vertical timeline.
  *
- * Стопка одинаковых карточек не читается как хронология — глаз не видит,
- * что было раньше, а что позже. Нить с точками показывает это без слов.
+ * A stack of identical cards does not read as a chronology — the eye cannot
+ * see what came first. A thread with dots shows it without words.
  */
 export default function ActivityFeed({ items, language, t }) {
   if (!items || !items.length) {

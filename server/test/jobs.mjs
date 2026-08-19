@@ -1,7 +1,7 @@
-// Проверка крон-задач этапа 4. Сервер не нужен — работаем напрямую с базой.
+// Stage 4 cron jobs. No server needed — this works against the database directly.
 //
-// Главное, что здесь проверяется: идемпотентность начисления. Крон падает
-// и перезапускается — проценты не должны начислиться дважды.
+// The main thing checked here is idempotent accrual. The cron crashes and
+// restarts — interest must not be accrued twice.
 
 import 'dotenv/config'
 import { pool } from '../src/db/pool.js'
@@ -14,12 +14,12 @@ const ok = (cond, label, extra = '') => {
   cond ? passed++ : failed++
   console.log(`${cond ? 'ok  ' : 'FAIL'} ${label}${extra ? '  → ' + extra : ''}`)
 }
-const sum = (t) => (t / 100).toLocaleString('ru-RU') + ' сум'
+const sum = (t) => (t / 100).toLocaleString('en-US') + ' sum'
 const quiet = () => {}
 
 const PHONE = '+998900000888'
 
-// ── подготовка ────────────────────────────────────────────
+// ── setup ─────────────────────────────────────────────────
 
 const cleanup = async () => {
   const u = (await pool.query(`SELECT id FROM users WHERE phone=$1`, [PHONE])).rows[0]
@@ -45,7 +45,7 @@ await pool.query(
 )
 const farm = (await pool.query(`SELECT id FROM farms ORDER BY id LIMIT 1`)).rows[0]
 
-// Вклад 2 млн сум под 18% на 12 месяцев, начатый 3 месяца назад
+// A 2 million sum deposit at 18% for 12 months, started 3 months ago
 const pFix = (await pool.query(
   `INSERT INTO products (model_type, farm_id, title_en, min_amount_tiyin, term_months, annual_rate_bp, status)
    VALUES ('fixed_income',$1,'JOBS fixed income',100000000,12,1800,'active') RETURNING id`,
@@ -61,7 +61,7 @@ const cFix = (await pool.query(
   [user.id, pFix.id]
 )).rows[0]
 
-console.log(`пользователь #${user.id}, вклад #${cFix.id}: 2 млн сум под 18%, начат 3 месяца назад\n`)
+console.log(`user #${user.id}, deposit #${cFix.id}: 2 million sum at 18%, started 3 months ago\n`)
 
 // ── accrueInterest ────────────────────────────────────────
 console.log('── accrueInterest ──')
@@ -72,16 +72,16 @@ const rows1 = (await pool.query(
   [cFix.id]
 )).rows
 
-ok(rows1.length === 3, 'начислено за 3 прошедших месяца', String(rows1.length))
+ok(rows1.length === 3, 'accrued for the 3 elapsed months', String(rows1.length))
 ok(rows1.every(r => Number(r.amount_tiyin) === 3000000),
-   'каждое начисление 30 000 сум', rows1[0] && sum(rows1[0].amount_tiyin))
-ok(rows1.every(r => r.status === 'pending'), 'статус pending — начислено, но не выплачено')
-ok(rows1.every(r => r.period_start && r.period_end), 'период проставлен у каждого')
+   'each accrual is 30,000 sum', rows1[0] && sum(rows1[0].amount_tiyin))
+ok(rows1.every(r => r.status === 'pending'), 'status pending — accrued but not paid out')
+ok(rows1.every(r => r.period_start && r.period_end), 'the period is set on every one')
 
 const starts = rows1.map(r => r.period_start.toISOString().slice(0, 10))
-ok(new Set(starts).size === 3, 'периоды не повторяются', starts.join(', '))
+ok(new Set(starts).size === 3, 'the periods do not repeat', starts.join(', '))
 
-// Повторный прогон — то, ради чего существует уникальный индекс
+// A second run — the very thing the unique index exists for
 const run2 = await accrueInterest({ log: quiet })
 const rows2 = (await pool.query(
   `SELECT count(*)::int AS n, COALESCE(sum(amount_tiyin),0)::bigint AS s
@@ -89,22 +89,22 @@ const rows2 = (await pool.query(
   [cFix.id]
 )).rows[0]
 
-ok(Number(rows2.n) === 3, 'повторный прогон не добавил записей', `было 3, стало ${rows2.n}`)
-ok(run2.created === 0, '  создано 0')
-ok(run2.skipped === 3, '  пропущено 3 как уже начисленные', String(run2.skipped))
-ok(Number(rows2.s) === 9000000, 'итого начислено 90 000 сум за 3 месяца', sum(Number(rows2.s)))
+ok(Number(rows2.n) === 3, 'the second run added no rows', `was 3, now ${rows2.n}`)
+ok(run2.created === 0, '  0 created')
+ok(run2.skipped === 3, '  3 skipped as already accrued', String(run2.skipped))
+ok(Number(rows2.s) === 9000000, '90,000 sum accrued over 3 months in total', sum(Number(rows2.s)))
 
-// Третий прогон подряд — на всякий случай
+// A third run in a row — just in case
 await accrueInterest({ log: quiet })
 const n3 = (await pool.query(
   `SELECT count(*)::int AS n FROM payouts WHERE contract_id=$1 AND kind='interest'`, [cFix.id]
 )).rows[0].n
-ok(Number(n3) === 3, 'третий прогон тоже ничего не добавил', String(n3))
+ok(Number(n3) === 3, 'the third run added nothing either', String(n3))
 
-// Завершённый договор не начисляет
+// A completed contract accrues nothing
 await pool.query(`UPDATE contracts SET status='completed' WHERE id=$1`, [cFix.id])
 const run4 = await accrueInterest({ log: quiet })
-ok(run4.created === 0, 'по завершённому договору начислений нет')
+ok(run4.created === 0, 'no accrual on a completed contract')
 await pool.query(`UPDATE contracts SET status='active' WHERE id=$1`, [cFix.id])
 
 // ── markOverdue ───────────────────────────────────────────
@@ -125,7 +125,7 @@ const cInst = (await pool.query(
   [user.id, pInst.id]
 )).rows[0]
 
-// Два платежа давно просрочены, один просрочен, но ещё в льготном периоде
+// Two payments are long overdue, one is overdue but still in the grace period
 const sched = buildSchedule(60000000, 6)
 for (const [i, p] of sched.entries()) {
   const daysAgo = i < 2 ? grace + 10 : (i === 2 ? Math.max(0, grace - 2) : -30)
@@ -142,14 +142,14 @@ const st1 = (await pool.query(
   [cInst.id]
 )).rows
 
-ok(mo1.overdue >= 2, 'просроченные платежи помечены', `${mo1.overdue} шт.`)
+ok(mo1.overdue >= 2, 'overdue payments are marked', `${mo1.overdue} of them`)
 const overdueCount = st1.find(r => r.status === 'overdue')?.n || 0
-ok(overdueCount === 2, 'ровно 2 — платёж в льготном периоде не тронут', String(overdueCount))
+ok(overdueCount === 2, 'exactly 2 — the one in the grace period is untouched', String(overdueCount))
 
 const cAfter1 = (await pool.query(`SELECT status FROM contracts WHERE id=$1`, [cInst.id])).rows[0]
-ok(cAfter1.status === 'active', `при 2 просрочках из ${maxMissed} договор ещё активен`, cAfter1.status)
+ok(cAfter1.status === 'active', `with 2 of ${maxMissed} missed the contract is still active`, cAfter1.status)
 
-// Догоняем порог
+// Catch up to the threshold
 await pool.query(
   `UPDATE payment_schedule SET due_date = CURRENT_DATE - ($2 || ' days')::interval
    WHERE contract_id=$1 AND status='pending'`,
@@ -157,14 +157,14 @@ await pool.query(
 )
 const mo2 = await markOverdue({ log: quiet })
 const cAfter2 = (await pool.query(`SELECT status FROM contracts WHERE id=$1`, [cInst.id])).rows[0]
-ok(cAfter2.status === 'defaulted', `при ${maxMissed}+ просрочках договор ушёл в defaulted`, cAfter2.status)
+ok(cAfter2.status === 'defaulted', `with ${maxMissed}+ missed the contract went defaulted`, cAfter2.status)
 
-// Повторный прогон ничего не ломает
+// A repeat run breaks nothing
 const mo3 = await markOverdue({ log: quiet })
-ok(mo3.overdue === 0, 'повторный прогон новых просрочек не нашёл', String(mo3.overdue))
-ok(mo3.defaulted === 0, '  и договоров не тронул')
+ok(mo3.overdue === 0, 'the repeat run found no new overdue payments', String(mo3.overdue))
+ok(mo3.defaulted === 0, '  and touched no contracts')
 
-// waived не превращается в overdue
+// waived does not turn into overdue
 await pool.query(
   `UPDATE payment_schedule SET status='waived' WHERE contract_id=$1 AND seq=6`, [cInst.id]
 )
@@ -176,11 +176,11 @@ await markOverdue({ log: quiet })
 const waived = (await pool.query(
   `SELECT status FROM payment_schedule WHERE contract_id=$1 AND seq=6`, [cInst.id]
 )).rows[0]
-ok(waived.status === 'waived', 'прощённый платёж не становится просроченным', waived.status)
+ok(waived.status === 'waived', 'a waived payment does not become overdue', waived.status)
 
-// ── итог ──────────────────────────────────────────────────
+// ── summary ───────────────────────────────────────────────
 console.log(`\n${passed} ok, ${failed} failed`)
-console.log(`\nСледы теста убираются при следующем прогоне. Убрать совсем:`)
+console.log(`\nTest traces are cleaned up on the next run. To remove them for good:`)
 console.log(`  psql -U postgres -d molfi -c "`)
 console.log(`    DELETE FROM transactions WHERE user_id=${user.id};`)
 console.log(`    DELETE FROM contracts WHERE user_id=${user.id};`)

@@ -16,9 +16,9 @@ import bot from './services/telegramBot.js'
 
 const app = express()
 
-// Меню команд Telegram задаётся отдельно для каждого языка: клиент
-// показывает то, что соответствует языку его аккаунта. Раньше здесь был
-// только русский, и англоязычный пользователь видел русские подписи.
+// The Telegram command menu is set separately for each language: the client
+// shows whichever matches its account language. This used to be Russian only,
+// so an English-speaking user saw Russian captions.
 const BOT_COMMANDS = {
   en: [
     { command: 'start', description: 'Start Molfi' },
@@ -38,14 +38,14 @@ const BOT_COMMANDS = {
 }
 
 Promise.all([
-  // Без language_code — то, что увидят все остальные локали
+  // No language_code — this is what every other locale will see
   bot.setMyCommands(BOT_COMMANDS.en),
   ...Object.entries(BOT_COMMANDS).map(([lang, cmds]) =>
     bot.setMyCommands(cmds, { language_code: lang })),
 ]).then(() => console.log('🤖 Telegram bot initialized'))
   .catch(e => console.error('Telegram bot setup error:', e.message))
 
-// Строки с "*" пакет cors не раскрывает как маску — нужны регулярки
+// The cors package does not treat "*" inside a string as a wildcard — regexes
 app.use(cors({
   origin: [
     'http://localhost:5173',
@@ -64,8 +64,8 @@ app.use(express.json())
 app.use('/api/auth', authRoutes)
 app.use('/api', activityRouter)
 app.use('/api', animalsRoutes)
-// products/contracts/payments монтируются на /api целиком: внутри лежат
-// и публичные пути, и админские (/admin/products и т.д.)
+// products/contracts/payments are mounted on /api as a whole: they hold both
+// public and admin paths (/admin/products and so on)
 app.use('/api', productsRoutes)
 app.use('/api', contractsRoutes)
 app.use('/api', paymentsRoutes)

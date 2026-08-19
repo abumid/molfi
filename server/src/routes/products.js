@@ -6,8 +6,8 @@ import { ALL_MODELS as MODELS, enabledModels } from '../utils/settings.js'
 
 const router = Router()
 
-// Животное подтягиваем LEFT JOIN'ом: у installment animal_id пустой
-// до отгрузки, INNER выкинул бы такие офферы из выдачи целиком.
+// The animal is pulled in with a LEFT JOIN: installment has an empty animal_id
+// until shipment, and an INNER join would drop such offers from the list entirely.
 const SELECT_PRODUCT = `
   SELECT p.*,
          a.name             AS animal_name,
@@ -21,34 +21,34 @@ const SELECT_PRODUCT = `
          a.price_per_kg_tiyin,
          f.name             AS farm_name,
          f.location         AS farm_location,
-         -- Камера животного важнее камеры фермы: если на барана
-         -- направлена своя, показываем её
+         -- The animal camera beats the farm camera: if one is pointed at this
+         -- ram, show that one
          COALESCE(a.stream_url, f.stream_url) AS stream_url
   FROM products p
   LEFT JOIN animals a ON a.id = p.animal_id
   LEFT JOIN farms   f ON f.id = p.farm_id
 `
 
-// Поля, обязательные для каждой модели. В БД это стережёт
-// products_model_fields_check, но ловить 23514 и переводить его
-// в человеческий текст дороже, чем проверить заранее.
+// Fields required by each model. In the database this is guarded by
+// products_model_fields_check, but catching 23514 and turning it into human
+// text costs more than checking upfront.
 const validate = (body) => {
   const { model_type, animal_id, price_tiyin, term_months, meat_weight_g } = body
   if (!MODELS.includes(model_type)) return 'model_type must be one of ' + MODELS.join(', ')
-  // investment и ownership продают конкретное животное по цене
+  // investment and ownership sell a specific animal at a price
   if (['investment', 'ownership'].includes(model_type)) {
     if (!animal_id) return `${model_type} requires animal_id`
     if (!price_tiyin) return `${model_type} requires price_tiyin`
   }
-  // installment продаёт обещание мяса в срок
+  // installment sells a promise of meat by a deadline
   if (model_type === 'installment' && (!term_months || !meat_weight_g))
     return 'installment requires term_months and meat_weight_g'
   return null
 }
 
-// ── публичная витрина ─────────────────────────────────────
+// ── public catalogue ──────────────────────────────────────
 
-// Клиенту нужно знать, какие вкладки рисовать, до запроса самих офферов
+// The client needs to know which tabs to draw before requesting the offers
 router.get('/models', asyncHandler(async (req, res) => {
   ok(res, { models: await enabledModels() })
 }))
@@ -57,8 +57,8 @@ router.get('/products', asyncHandler(async (req, res) => {
   const { model } = req.query
   if (model && !MODELS.includes(model)) return fail(res, 'unknown_model')
 
-  // Спрятанные модели не должны утекать в витрину, даже если оффер
-  // остался в статусе active с прошлых времён
+  // Hidden models must not leak into the catalogue, even if an offer stayed
+  // active from earlier times
   const allowed = await enabledModels()
   if (model && !allowed.includes(model)) return ok(res, { products: [] })
 
@@ -78,10 +78,10 @@ router.get('/products/:id', asyncHandler(async (req, res) => {
   const product = (await pool.query(`${SELECT_PRODUCT} WHERE p.id = $1`, [req.params.id])).rows[0]
   if (!product) return fail(res, 'not_found', 404)
 
-  // Прямая ссылка на оффер спрятанной модели тоже не должна открываться
+  // A direct link to an offer of a hidden model must not open either
   if (!(await enabledModels()).includes(product.model_type)) return fail(res, 'not_found', 404)
 
-  // История веса нужна только там, где покупают конкретное животное
+  // Weight history is only needed where a specific animal is being bought
   const weights = product.animal_id
     ? (await pool.query(
         `SELECT weight_g, recorded_at FROM weight_records
@@ -93,7 +93,7 @@ router.get('/products/:id', asyncHandler(async (req, res) => {
   ok(res, { product, weights })
 }))
 
-// ── админ ─────────────────────────────────────────────────
+// ── admin ─────────────────────────────────────────────────
 
 router.get('/admin/products', requireAdmin, asyncHandler(async (req, res) => {
   const { model, status } = req.query
@@ -138,8 +138,8 @@ router.post('/admin/products', requireAdmin, asyncHandler(async (req, res) => {
       description_en || null, description_ru || null, description_uz || null, photo_url || null,
       price_tiyin || 0, term_months || null, meat_weight_g || null,
       boarding_fee_monthly_tiyin || null,
-      // Оффер на конкретное животное всегда на одно место: барана
-      // нельзя продать дважды, сколько ни поставь в форме
+      // An offer on a specific animal always has exactly one slot: a ram
+      // cannot be sold twice, whatever the form says
       ['investment', 'ownership'].includes(model_type) ? 1 : (slots_total || 1),
       status || 'draft', starts_at || null, ends_at || null,
     ]
@@ -156,8 +156,8 @@ router.put('/admin/products/:id', requireAdmin, asyncHandler(async (req, res) =>
   const err = validate(merged)
   if (err) return fail(res, err)
 
-  // Уменьшать slots_total ниже уже проданного нельзя — иначе витрина
-  // покажет отрицательный остаток, а договоры останутся висеть.
+  // slots_total cannot be lowered below what is already sold — the catalogue
+  // would show a negative remainder and the contracts would be left hanging.
   if (merged.slots_total < current.slots_taken)
     return fail(res, `slots_total cannot be below slots_taken (${current.slots_taken})`)
 
@@ -186,8 +186,8 @@ router.put('/admin/products/:id', requireAdmin, asyncHandler(async (req, res) =>
 }))
 
 router.delete('/admin/products/:id', requireAdmin, asyncHandler(async (req, res) => {
-  // Оффер с договорами не удаляем: FK всё равно не даст, а история продаж
-  // должна пережить уборку витрины. Закрываем вместо удаления.
+  // An offer with contracts is not deleted: the FK would block it anyway, and
+  // the sales history must outlive a catalogue cleanup. Closed instead.
   const used = (await pool.query(
     `SELECT count(*)::int AS n FROM contracts WHERE product_id = $1`,
     [req.params.id]

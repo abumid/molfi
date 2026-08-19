@@ -1,7 +1,7 @@
-// Форматирование денег и дат с учётом языка.
-// Раньше formatSum был скопирован в четыре страницы, и во всех
-// валюта была зашита как «сум», а локаль как ru-UZ — при английском
-// интерфейсе суммы всё равно выходили по-русски.
+// Money and date formatting, language aware.
+// formatSum used to be copied into four pages, and in all of them the currency
+// was hardcoded as "сум" and the locale as ru-UZ — so an English interface
+// still printed sums in Russian.
 
 const LOCALE = { en: 'en-US', ru: 'ru-RU', uz: 'uz-UZ' }
 const CURRENCY = { en: 'UZS', ru: 'сум', uz: "so'm" }
@@ -16,12 +16,12 @@ export const formatSum = (tiyin, language = 'en') => {
 const MILLION = { en: 'M', ru: 'млн', uz: 'mln' }
 
 /**
- * Короткая запись суммы для сводок: «2,81 млн» вместо «2 811 120 сум».
- * В итогах важен порядок величины, а точные тийины только мешают
- * сравнивать три числа взглядом.
+ * Short form for summaries: "2.81M" instead of "2,811,120 UZS".
+ * In totals the order of magnitude is what matters, and exact tiyin only get
+ * in the way of comparing three numbers at a glance.
  *
- * Разделитель дробной части берём у Intl, а не через replace: в узбекской
- * локали он свой, и жёсткая замена точки на запятую там врала бы.
+ * The decimal separator comes from Intl rather than a replace: the Uzbek
+ * locale has its own, and hardcoding a dot-to-comma swap would lie there.
  */
 export const formatShort = (tiyin, language = 'en') => {
   const locale = LOCALE[language] || LOCALE.en
@@ -33,12 +33,12 @@ export const formatShort = (tiyin, language = 'en') => {
   const num = new Intl.NumberFormat(locale, {
     minimumFractionDigits: 0, maximumFractionDigits: digits,
   }).format(mln)
-  // По-английски пишут «2.81M» слитно, по-русски и по-узбекски — через пробел
+  // English writes "2.81M" joined up, Russian and Uzbek use a space
   const suffix = MILLION[language] || MILLION.en
   return language === 'en' ? `${num}${suffix}` : `${num} ${suffix}`
 }
 
-/** Без символа валюты — когда единица уже подписана рядом. */
+/** Without the currency symbol — when the unit is already labelled nearby. */
 export const formatNumber = (value, language = 'en') =>
   new Intl.NumberFormat(LOCALE[language] || LOCALE.en).format(Number(value) || 0)
 

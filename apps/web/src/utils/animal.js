@@ -1,9 +1,9 @@
 /**
- * Строка «где живёт животное».
+ * The "where the animal lives" string.
  *
- * Название фермы часто уже содержит населённый пункт («Молфи Чирчик»),
- * и слепая склейка с адресом давала «Молфи Чирчик · Ташкентская
- * область, Чирчик» — Чирчик дважды в одной строке.
+ * A farm name often already contains the town ("Molfi Chirchiq"), and blindly
+ * gluing the address on gave "Molfi Chirchiq · Tashkent region, Chirchiq" —
+ * Chirchiq twice in one line.
  */
 export const placeLine = (farmName, farmLocation) => {
   const name = (farmName || '').trim()
@@ -11,7 +11,7 @@ export const placeLine = (farmName, farmLocation) => {
   if (!name) return loc
   if (!loc) return name
 
-  // Из адреса выбрасываем куски, которые уже прозвучали в названии фермы
+  // Drop the parts of the address already spoken by the farm name
   const inName = new Set(
     name.toLowerCase().split(/[\s·,]+/).filter(w => w.length > 2))
 
@@ -24,7 +24,7 @@ export const placeLine = (farmName, farmLocation) => {
   return rest ? `${name} · ${rest}` : name
 }
 
-/** Возраст в месяцах. null, если дата рождения не заполнена. */
+/** Age in months. null when the birth date is not filled in. */
 export const ageMonths = (d) => {
   if (!d) return null
   const b = new Date(d)
@@ -34,14 +34,14 @@ export const ageMonths = (d) => {
 }
 
 /**
- * Прибавка в килограммах за месяц по истории замеров.
+ * Weight gain in kilograms per month, from the recorded history.
  *
- * «52 кг» ничего не говорит человеку, который не разводит баранов.
- * «+3,4 кг за месяц» говорит главное: животное растёт, деньги работают.
+ * "52 kg" says nothing to someone who does not breed rams.
+ * "+3.4 kg per month" says the main thing: the animal grows, the money works.
  *
- * Считаем по всему отрезку, а не по двум последним замерам: если ферма
- * взвесила дважды за неделю, разница между ними даёт бессмысленный
- * скачок при делении на срок.
+ * Computed over the whole span, not the last two records: if the farm weighed
+ * the animal twice in one week, the difference between those two divided by
+ * the term gives a meaningless jump.
  */
 export const gainPerMonth = (weights) => {
   if (!weights || weights.length < 2) return null

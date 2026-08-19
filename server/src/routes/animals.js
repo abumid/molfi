@@ -16,7 +16,7 @@ const SELECT_ANIMAL = `
   LEFT JOIN farms f ON f.id = a.farm_id
 `
 
-// ── публичное ─────────────────────────────────────────────
+// ── public ────────────────────────────────────────────────
 
 router.get('/animals', asyncHandler(async (req, res) => {
   const { species } = req.query
@@ -44,7 +44,7 @@ router.get('/animals/:id', asyncHandler(async (req, res) => {
   ok(res, { animal, weights: weights.rows, activity: acts.rows, videos: vids.rows })
 }))
 
-// Писать вес может только админ или доверенное устройство фермы
+// Only an admin or a trusted farm device may write a weight
 router.post('/animals/:id/weight', requireAdmin, asyncHandler(async (req, res) => {
   const { weight_g } = req.body
   if (!weight_g) return fail(res, 'weight_g required')
@@ -68,7 +68,7 @@ router.post('/animals/:id/weight', requireAdmin, asyncHandler(async (req, res) =
   }
 }))
 
-// ── админ ─────────────────────────────────────────────────
+// ── admin ─────────────────────────────────────────────────
 
 router.get('/admin/animals', requireAdmin, asyncHandler(async (req, res) => {
   const { species, status } = req.query
@@ -109,7 +109,7 @@ router.post('/admin/animals', requireAdmin, asyncHandler(async (req, res) => {
     ]
   )).rows[0]
 
-  // Стартовый вес сразу в историю, иначе график веса начнётся с пустоты
+  // The starting weight goes straight into the history, or the chart starts empty
   if (current_weight_g) {
     await pool.query(`INSERT INTO weight_records (animal_id, weight_g) VALUES ($1,$2)`, [animal.id, current_weight_g])
   }
@@ -139,9 +139,9 @@ router.put('/admin/animals/:id', requireAdmin, asyncHandler(async (req, res) => 
        farm_id            = COALESCE($13, farm_id),
        status             = COALESCE($14, status),
        expected_sale_date = COALESCE($15, expected_sale_date),
-       -- COALESCE тут не годится: им ссылку на камеру нельзя стереть,
-       -- а снятую камеру убрать надо. Пустая строка = очистить,
-       -- отсутствие поля в запросе = не трогать.
+       -- COALESCE will not do here: it cannot clear a camera link, and a camera
+       -- that was taken down has to be removable. Empty string = clear,
+       -- field absent from the request = leave alone.
        stream_url         = CASE WHEN $16::text IS NULL THEN stream_url
                                  WHEN $16 = ''         THEN NULL
                                  ELSE $16 END
@@ -155,7 +155,7 @@ router.put('/admin/animals/:id', requireAdmin, asyncHandler(async (req, res) => 
   )).rows[0]
   if (!animal) return fail(res, 'not_found', 404)
 
-  // Правка веса через карточку тоже должна попадать в историю
+  // A weight edited from the card must land in the history too
   if (b.current_weight_g) {
     const last = (await pool.query(
       `SELECT weight_g FROM weight_records WHERE animal_id=$1 ORDER BY recorded_at DESC LIMIT 1`,
@@ -170,7 +170,7 @@ router.put('/admin/animals/:id', requireAdmin, asyncHandler(async (req, res) => 
 }))
 
 router.delete('/admin/animals/:id', requireAdmin, asyncHandler(async (req, res) => {
-  // Животное с живым договором не удаляем — за ним стоят деньги владельца
+  // An animal with a live contract is not deleted — the owner money is behind it
   const active = (await pool.query(
     `SELECT count(*)::int AS n FROM contracts
      WHERE animal_id = $1 AND status IN ('pending','active')`,
@@ -178,22 +178,22 @@ router.delete('/admin/animals/:id', requireAdmin, asyncHandler(async (req, res) 
   )).rows[0].n
   if (active > 0) return fail(res, 'has_active_contracts')
 
-  // weight_records / videos / activity уходят каскадом — FK настроены
+  // weight_records / videos / activity go by cascade — the FKs are set up
   const deleted = (await pool.query(`DELETE FROM animals WHERE id=$1 RETURNING id`, [req.params.id])).rows[0]
   if (!deleted) return fail(res, 'not_found', 404)
   ok(res, { deleted: deleted.id })
 }))
 
 /**
- * Продажа животного по договору investment.
+ * Selling an animal under an investment contract.
  *
- * Из выручки сначала гасится накопленная абонплата за содержание,
- * потом считается прибыль и с неё берётся комиссия. Порядок важен:
- * комиссия с выручки означала бы, что при падении цены клиент платит
- * процент за собственный убыток.
+ * The accrued boarding fee is settled out of the proceeds first, then profit is
+ * computed and the fee is taken from it. The order matters: a fee on gross
+ * revenue would mean that when prices fall the client pays a percentage on
+ * their own loss.
  *
- * Договоры ownership так не закрываются — там клиент забирает животное
- * или мясо, денежного возврата нет.
+ * ownership contracts do not close this way — there the client takes the animal
+ * or the meat, and there is no cash payout.
  */
 router.post('/admin/animals/:id/sell', requireAdmin, asyncHandler(async (req, res) => {
   const { final_weight_g, final_sale_price_tiyin } = req.body
@@ -222,19 +222,19 @@ router.post('/admin/animals/:id/sell', requireAdmin, asyncHandler(async (req, re
       [req.params.id]
     )).rows[0]
 
-    // Животное могло принадлежать ферме, а не клиенту — тогда просто продаём
+    // The animal may have belonged to the farm rather than a client — then we just sell
     if (!contract) {
       await client.query('COMMIT')
       return ok(res, { animal: updated, payout: null, note: 'no_active_ownership_contract' })
     }
 
-    // Владение закрывается выдачей животного, а не продажей
+    // Ownership closes with handover of the animal, not with a sale
     if (contract.model_type === 'ownership') {
       await client.query('ROLLBACK')
       return fail(res, 'ownership_contract_is_closed_by_handover')
     }
 
-    // Добираем содержание за месяцы, которые крон ещё не успел начислить
+    // Top up boarding for the months the cron has not accrued yet
     const accrued = Math.max(Number(contract.boarding_accrued_tiyin) || 0, boardingDue(contract))
     if (accrued !== Number(contract.boarding_accrued_tiyin)) {
       await client.query(

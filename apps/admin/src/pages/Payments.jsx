@@ -51,8 +51,8 @@ export default function Payments() {
     return c
   }, [payments])
 
-  // Оплата наличными или переводом мимо приложения: кошелёк не трогаем,
-  // иначе баланс покажет деньги, которых у клиента на платформе нет
+  // Paid in cash or by transfer outside the app: the wallet is left alone, or
+  // the balance would show money the client does not have on the platform
   const markPaid = async (p) => {
     if (!confirm(t('payments.markPaidConfirm'))) return
     setWaiving(p.id)
@@ -66,7 +66,7 @@ export default function Payments() {
   }
 
   const waive = async (p) => {
-    // Операция необратима: прощённый платёж нельзя вернуть в pending
+    // Irreversible: a waived payment cannot be put back to pending
     if (!confirm(t('payments.waiveConfirm'))) return
     setWaiving(p.id)
     try {

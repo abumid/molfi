@@ -13,7 +13,7 @@ const CODE_TTL_MS = 10 * 60 * 1000
 
 const generateCode = () => String(Math.floor(1000 + Math.random() * 9000))
 
-// В БД номер может лежать и с плюсом, и без — бот сохраняет по-разному
+// The database may hold the number with or without a plus — the bot saves both ways
 const phoneVariants = (phone) => {
   const digits = String(phone || '').replace(/\D/g, '')
   return ['+' + digits, digits]
@@ -30,9 +30,9 @@ const findUserByPhone = async (phone, columns = '*') => {
 const LANGS = ['en', 'ru', 'uz']
 
 /**
- * Язык уведомления. У существующего клиента берём сохранённый, иначе тот,
- * что прислало приложение. При регистрации в базе его ещё нет, а SMS
- * уходит уже тогда — поэтому одного только поля в users мало.
+ * Notification language. For an existing client we take the stored one,
+ * otherwise whatever the app sent. At sign-up it is not in the database yet
+ * while the SMS already goes out — so the users column alone is not enough.
  */
 const notifyLang = async (phone, requested) => {
   const user = await findUserByPhone(phone, 'language')
@@ -78,8 +78,8 @@ router.post('/check-phone', asyncHandler(async (req, res) => {
   const { phone } = req.body
   if (!phone) return fail(res, 'Phone required')
   const user = await findUserByPhone(phone, 'id, name, password_hash, telegram_id')
-  // Строка без пароля создана ботом (пользователь поделился номером) —
-  // это ещё не регистрация, ведём его по флоу регистрации
+  // A row without a password was created by the bot (the user shared their
+  // number) — that is not sign-up yet, so send them through the sign-up flow
   if (user?.password_hash) return ok(res, { exists: true, name: user.name })
   ok(res, { exists: false, pending: !!user, has_telegram: !!user?.telegram_id })
 }))
@@ -108,8 +108,8 @@ router.post('/register', asyncHandler(async (req, res) => {
   if (!phone || !code || !password) return fail(res, 'Phone, code and password required')
   if (password.length < 6) return fail(res, 'Password must be at least 6 characters')
 
-  // Язык интерфейса запоминаем при регистрации: по нему пойдут SMS
-  // и сообщения бота, и человек не должен настраивать его дважды
+  // The interface language is stored at sign-up: SMS and bot messages follow
+  // it, and nobody should have to configure it twice
   const lang = LANGS.includes(language) ? language : 'en'
 
   const codeRow = (await findValidCode(phone, code)).rows[0]
@@ -145,8 +145,8 @@ router.post('/register', asyncHandler(async (req, res) => {
     [user.id]
   )
 
-  // Имени может не быть — тогда бот поздоровается без обращения,
-  // а не назовёт человека русским словом «друг» в английском интерфейсе
+  // The name may be missing — then the bot greets without addressing anyone,
+  // instead of using a Russian word for "friend" in an English interface
   if (telegram_id) {
     await sendWelcome(telegram_id, name || first_name || null)
   }
@@ -232,9 +232,9 @@ router.post('/reset-password', asyncHandler(async (req, res) => {
 }))
 
 router.get('/me', requireAuth, asyncHandler(async (req, res) => {
-  // Баланс берём из wallet_balances — это единственная таблица, в которую
-  // реально пишут пополнения и списания. users.balance не обновлял никто,
-  // и профиль показывал ноль всем подряд.
+  // The balance comes from wallet_balances — the only table that top-ups and
+  // charges actually write to. Nothing ever updated users.balance, so the
+  // profile showed zero for everyone.
   const user = (await pool.query(
     `SELECT u.id, u.phone, u.name, u.role, u.language,
             COALESCE(w.balance_tiyin, 0) AS balance

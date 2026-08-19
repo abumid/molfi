@@ -35,9 +35,9 @@ export default function Contracts() {
   }, [])
 
   /**
-   * Порядок: сначала то, что требует денег, потом живые договоры,
-   * потом закрытые. Долг, спрятанный четвёртым в списке, превращается
-   * в просрочку — а платит за неё клиент.
+   * Order: first what needs money, then live contracts, then closed ones.
+   * A debt hidden fourth down the list turns into an overdue payment — and the
+   * client is the one who pays for that.
    */
   const sorted = useMemo(() => {
     const rank = (c) => {
@@ -49,13 +49,13 @@ export default function Contracts() {
       rank(a) - rank(b) || new Date(b.created_at) - new Date(a.created_at))
   }, [contracts])
 
-  /** Итоги считаем по живым договорам: закрытые уже не «мои активы». */
+  /** Totals are counted on live contracts: closed ones are no longer "my assets". */
   const totals = useMemo(() => {
     const live = contracts.filter(c => !CLOSED.includes(c.status))
     return {
       invested: live.reduce((s, c) => s + (Number(c.principal_tiyin) || 0), 0),
-      // Стоимость сегодня есть только у инвестиции: у владения выход
-      // мясом, складывать его в деньги значит обещать несуществующее
+      // Only an investment has a value today: ownership exits as meat, and
+      // adding it into a money total would promise something that does not exist
       worth: live.filter(c => c.model_type === 'investment')
         .reduce((s, c) => s + (Number(c.summary?.gross) || 0), 0),
       due: live.reduce((s, c) => s + outstandingOf(c), 0),
@@ -107,8 +107,8 @@ export default function Contracts() {
         </div>
       ) : (
         <>
-          {/* Сводка сверху: без неё «сколько у меня всего» приходится
-              складывать в уме по карточкам */}
+          {/* Summary on top: without it "how much do I have in total" has to be
+              added up in your head from the cards */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))',
             background: 'var(--color-surface)', border: '1px solid var(--color-border)',
@@ -206,8 +206,8 @@ function ContractCard({ c, t, language, onOpen, onPay }) {
   const gain = gainPerMonth(c.weights)
 
   const isInvestment = c.model_type === 'investment'
-  // Знаковый результат приходит с сервера: обрезанный по нулю profit
-  // показывал бы убыток нулём
+  // The signed result comes from the server: a profit clamped at zero would
+  // show a loss as nothing
   const pnl = Number(c.summary?.pnl) || 0
   const worth = Number(c.summary?.gross) || 0
 
@@ -225,8 +225,8 @@ function ContractCard({ c, t, language, onOpen, onPay }) {
       borderRadius: 16, padding: 14, marginBottom: 10,
       opacity: closed ? .65 : 1,
     }}>
-      {/* Нажимается вся карточка: отдельная кнопка «подробнее» на каждой
-          повторялась столько раз, сколько договоров, и съедала треть высоты */}
+      {/* The whole card is tappable: a separate "details" button on each one was
+          repeated as many times as there were contracts and ate a third of the height */}
       <div
         onClick={onOpen}
         style={{ display: 'flex', alignItems: 'center', gap: 11, cursor: 'pointer' }}

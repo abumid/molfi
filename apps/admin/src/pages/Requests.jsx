@@ -11,11 +11,11 @@ const STATUS_BADGE = {
 }
 
 /**
- * Заявки на пополнение и вывод.
+ * Top-up and withdrawal requests.
  *
- * Пока Click и Payme не подключены, это единственный путь денег в кошелёк
- * клиента и обратно. Одобрение создаёт транзакцию и меняет баланс одной
- * операцией на сервере — здесь только решение и комментарий.
+ * Until Click and Payme are connected this is the only path for money into the
+ * client wallet and back out. Approval creates a transaction and changes the
+ * balance in one server operation — here there is only the decision and a comment.
  */
 export default function Requests() {
   const language = useStore(s => s.language)
@@ -115,8 +115,8 @@ export default function Requests() {
               <tbody>
                 {filtered.map(r => {
                   const isTopup = r.kind === 'topup'
-                  // Вывод больше остатка одобрять нельзя — сервер откажет,
-                  // и лучше показать это до нажатия
+                  // A withdrawal above the balance cannot be approved — the server
+                  // would refuse, and it is better to show that before the click
                   const notEnough = !isTopup
                     && Number(r.user_balance_tiyin) < Number(r.amount_tiyin)
                   return (

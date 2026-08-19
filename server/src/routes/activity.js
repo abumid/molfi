@@ -7,9 +7,9 @@ const router = Router()
 const VALID_TYPES = ['feeding', 'weighing', 'vet', 'video']
 const VET_RESULTS = ['healthy', 'treatment']
 
-// Заголовок обязателен хотя бы на одном языке. Раньше требовались
-// одновременно ru и uz, из-за чего событие нельзя было завести
-// на английском — а он теперь язык по умолчанию.
+// The title is required in at least one language. Both ru and uz used to be
+// mandatory, which made it impossible to create an event in English — and
+// English is now the default language.
 const hasAnyTitle = (b) => [b.title_en, b.title_ru, b.title_uz].some(v => v?.trim())
 
 router.get('/animals/:id/activity', asyncHandler(async (req, res) => {
@@ -81,8 +81,8 @@ router.post('/animals/:id/activity', requireAdmin, asyncHandler(async (req, res)
     ]
   )
 
-  // Взвешивание — не только запись в ленту: текущий вес животного
-  // и история весов должны обновиться, иначе график расходится с лентой
+  // A weigh-in is more than a feed entry: the animal's current weight and its
+  // weight history must be updated too, or the chart drifts from the feed
   if (type === 'weighing') {
     const grams = Math.round(meta.weight_kg * 1000)
     await pool.query(`UPDATE animals SET current_weight_g = $1 WHERE id = $2`, [grams, animalId])

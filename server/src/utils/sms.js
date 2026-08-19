@@ -1,5 +1,5 @@
-// Текст кода на трёх языках. Раньше здесь был зашит русский, и клиент
-// с английским интерфейсом получал SMS по-русски.
+// Code text in three languages. Russian used to be hardcoded here, so a
+// client on the English interface received the SMS in Russian.
 const CODE_TEXT = {
   en: (code) => `Your Molfi sign-in code: ${code}`,
   ru: (code) => `Ваш код подтверждения Molfi: ${code}`,

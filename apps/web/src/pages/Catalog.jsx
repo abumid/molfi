@@ -17,9 +17,9 @@ const ageMonths = (birthDate) => {
 }
 
 /**
- * Прогнозная стоимость: вес × цена за килограмм.
- * Считаем на клиенте, чтобы цифра менялась вместе с весом животного
- * без похода на сервер. Это оценка, и подписана она соответственно.
+ * Projected value: weight × price per kilogram.
+ * Computed on the client so the figure moves with the animal weight without a
+ * round trip to the server. It is an estimate, and it is labelled as one.
  */
 const projected = (p) => {
   const kg = (Number(p.animal_weight_g) || 0) / 1000
@@ -86,8 +86,8 @@ function ProductCard({ p, language, t, onOpen }) {
               </div>
             </div>
 
-            {/* Прогноз показываем только там, где выход через продажу.
-                У владения клиент забирает мясо, «сколько стоит» ему не про доход. */}
+            {/* The projection is shown only where the exit is a sale.
+                In ownership the client takes the meat, so "what is it worth" is not about income. */}
             {p.model_type === 'investment' && worth > 0 && (
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{t.product.projectedNow}</div>
@@ -123,14 +123,14 @@ export default function Catalog() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Договоры нужны карточке баланса: без них она покажет только
-    // свободные деньги и промолчит про активы
+    // The balance card needs the contracts: without them it shows only free
+    // money and says nothing about assets
     Promise.all([fetchModels(), fetchProducts(), fetchBalance(), fetchContracts()])
       .finally(() => setLoading(false))
   }, [])
 
-  // Вкладка по умолчанию — первая включённая модель. Жёстко зашивать нельзя:
-  // список моделей приходит из настроек и может измениться без деплоя.
+  // The default tab is the first enabled model. Hardcoding it is not an option:
+  // the model list comes from settings and can change without a deploy.
   useEffect(() => {
     if (!tab && models.length) setTab(models[0])
   }, [models, tab])
@@ -151,7 +151,7 @@ export default function Catalog() {
         />
       </div>
 
-      {/* Вкладки моделей. Одна модель — вкладки не нужны, только шум. */}
+      {/* Model tabs. With a single model the tabs are just noise. */}
       {models.length > 1 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 8, overflowX: 'auto' }}>
           {models.map(m => (
