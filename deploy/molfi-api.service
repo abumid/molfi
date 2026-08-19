@@ -1,0 +1,52 @@
+# Служба API. Telegram-бот и суточные задания (начисление содержания,
+# отметка просрочек) живут внутри этого же процесса — index.js поднимает
+# их сам, поэтому отдельных служб и записей в cron не нужно.
+#
+# Установка:
+#   sudo cp deploy/molfi-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now molfi-api
+#
+# Логи:  journalctl -u molfi-api -f
+
+[Unit]
+Description=Molfi API
+Documentation=https://github.com/abumid/molfi
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=ai
+WorkingDirectory=/home/ai/molfi/server
+ExecStart=/usr/bin/node src/index.js
+EnvironmentFile=/home/ai/molfi/server/.env
+
+# Перезапуск при падении, но не бесконечной каруселью: если процесс
+# валится сразу после старта пять раз за минуту, systemd остановится
+# и это будет видно в статусе, а не утонет в логах
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Бот держит длинный опрос Telegram; при остановке даём ему закрыться
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=molfi-api
+
+# Процесс не должен уметь ничего, кроме своей работы
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ai/molfi/server
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
