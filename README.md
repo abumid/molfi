@@ -1,4 +1,4 @@
-# Molfi
+# Molfi.uz
 
 Livestock investment platform for Uzbekistan. A person buys a specific animal on a working farm in the Tashkent region, follows its weight from the app, and decides when to exit — taking the sale proceeds or the meat.
 
